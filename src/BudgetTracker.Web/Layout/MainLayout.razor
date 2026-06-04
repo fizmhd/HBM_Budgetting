@@ -1,0 +1,127 @@
+﻿@inherits LayoutComponentBase
+@using BudgetTracker.Web.Auth
+@inject IAuthService AuthService
+@inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthStateProvider
+
+<div class="app-container">
+    <header class="top-nav">
+        <div class="nav-content">
+            <a href="/" class="brand">
+                <span class="brand-icon">💰</span>
+                <span class="brand-text">Budget Tracker</span>
+            </a>
+            
+            <nav class="nav-links">
+                <AuthorizeView>
+                    <Authorized>
+                        <a href="/" class="nav-link">Dashboard</a>
+                        <a href="/transactions" class="nav-link">Transactions</a>
+                        <a href="/budgets" class="nav-link">Budgets</a>
+                        <a href="/reports" class="nav-link">Reports</a>
+                    </Authorized>
+                    <NotAuthorized>
+                        <a href="/" class="nav-link">Home</a>
+                        <a href="/features" class="nav-link">Features</a>
+                        <a href="/pricing" class="nav-link">Pricing</a>
+                    </NotAuthorized>
+                </AuthorizeView>
+            </nav>
+
+            <div class="nav-actions">
+                <AuthorizeView>
+                    <Authorized>
+                        <div class="dropdown user-dropdown">
+                            <button class="btn btn-link text-decoration-none dropdown-toggle d-flex align-items-center" @onclick="ToggleUserMenu" @onfocusout="CloseUserMenuDelayed">
+                                <i class="bi bi-person-circle me-2"></i>
+                                <span class="user-name">@context.User.Identity?.Name</span>
+                            </button>
+                            <div class="dropdown-menu dropdown-menu-end shadow @(_isUserMenuOpen ? "show" : "")">
+                                <a class="dropdown-item" href="/profile" @onclick="CloseUserMenu">
+                                    <i class="bi bi-person me-2"></i> Profile
+                                </a>
+                                <a class="dropdown-item" href="/settings" @onclick="CloseUserMenu">
+                                    <i class="bi bi-gear me-2"></i> Settings
+                                </a>
+                                <div class="dropdown-divider"></div>
+                                <button class="dropdown-item text-danger" @onclick="HandleLogout">
+                                    <i class="bi bi-box-arrow-right me-2"></i> Logout
+                                </button>
+                            </div>
+                        </div>
+                    </Authorized>
+                    <NotAuthorized>
+                        <a href="/login" class="btn btn-ghost">Login</a>
+                        <a href="/register" class="btn btn-primary">Get Started</a>
+                    </NotAuthorized>
+                </AuthorizeView>
+            </div>
+        </div>
+    </header>
+
+    <main class="main-content">
+        <ErrorBoundary>
+            <ChildContent>
+                @Body
+            </ChildContent>
+            <ErrorContent>
+                <div class="alert alert-danger m-4" role="alert">
+                    <h4 class="alert-heading">Uncaught Error!</h4>
+                    <p>An unexpected error has occurred. Please refresh the page and try again.</p>
+                </div>
+            </ErrorContent>
+        </ErrorBoundary>
+    </main>
+
+    <footer class="app-footer">
+        <div class="footer-content">
+            <p>&copy; 2024 Budget Tracker. All rights reserved.</p>
+        </div>
+    </footer>
+</div>
+
+
+
+@code {
+    private bool _isUserMenuOpen = false;
+
+    private void ToggleUserMenu() => _isUserMenuOpen = !_isUserMenuOpen;
+    
+    // Close menu when clicking an item
+    private void CloseUserMenu() => _isUserMenuOpen = false;
+
+    // Small delay to allow click events on items to fire before blur closes the menu
+    private async Task CloseUserMenuDelayed()
+    {
+        await Task.Delay(200);
+        _isUserMenuOpen = false;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        if (user.Identity?.IsAuthenticated == true)
+        {
+            var isProfileComplete = user.FindFirst("IsProfileComplete")?.Value;
+            
+            if (isProfileComplete == "False" && !Navigation.Uri.Contains("/onboarding"))
+            {
+                Navigation.NavigateTo("/onboarding", forceLoad: true);
+            }
+        }
+    }
+
+    private async Task HandleLogout()
+    {
+        await AuthService.LogoutAsync();
+        
+        if (AuthStateProvider is BudgetTracker.Web.Auth.AuthStateProvider provider)
+        {
+            provider.NotifyAuthenticationStateChanged();
+        }
+        
+        Navigation.NavigateTo("/", forceLoad: true);
+    }
+}

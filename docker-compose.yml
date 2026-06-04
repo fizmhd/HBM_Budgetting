@@ -1,0 +1,59 @@
+# Local development Postgres + pgAdmin for BudgetTracker.
+# Connection string (appsettings.Development.json / appsettings.Local.json):
+#   Host=localhost;Port=5432;Database=BudgetTracker_Dev;Username=postgres;Password=postgres
+#
+# Usage:
+#   docker compose up -d                       # start Postgres + pgAdmin
+#   dotnet ef database update \                # apply the schema (migrations live in
+#     --project src/BudgetTracker.Api \        # src/BudgetTracker.Api/Infrastructure/Persistence/Migrations)
+#     --startup-project src/BudgetTracker.Api
+#   docker compose down                        # stop (keeps data)
+#   docker compose down -v                     # stop and wipe the data volumes
+#
+# pgAdmin:
+#   Open http://localhost:5050
+#   Login:  admin@budgettracker.local  /  admin   (PGADMIN_DEFAULT_* below)
+#   The "BudgetTracker Dev" server is pre-registered (servers.json). On first expand it
+#   asks for the Postgres password once — enter: postgres
+#   (Inside the Docker network pgAdmin reaches the DB at host "postgres", not "localhost".)
+services:
+  postgres:
+    image: postgres:16
+    container_name: budgettracker-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: BudgetTracker_Dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - budgettracker-pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d BudgetTracker_Dev"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: budgettracker-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@budgettracker.local
+      PGADMIN_DEFAULT_PASSWORD: admin
+      # Skip the "set a master password" prompt for a smoother local experience.
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+    ports:
+      - "5050:80"
+    volumes:
+      - budgettracker-pgadmin:/var/lib/pgadmin
+      # Pre-register the BudgetTracker Dev server connection (read-only at import time).
+      - ./pgadmin/servers.json:/pgadmin4/servers.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  budgettracker-pgdata:
+  budgettracker-pgadmin:

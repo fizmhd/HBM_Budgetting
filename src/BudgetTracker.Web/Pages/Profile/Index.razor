@@ -1,0 +1,152 @@
+@page "/profile"
+@using BudgetTracker.Shared.DTOs.Auth
+@using BudgetTracker.Shared.DTOs.Users
+@using BudgetTracker.Web.Services
+@using BudgetTracker.Web.Logging
+@inject IApiClient ApiClient
+@inject IClientLogger Logger
+@attribute [Authorize]
+
+<PageTitle>Profile - Budget Tracker</PageTitle>
+
+<div class="auth-page fade-in">
+    <div class="auth-card">
+        <div class="profile-header">
+            <div class="profile-avatar">
+                <i class="bi bi-person-circle"></i>
+            </div>
+            <h2>My Profile</h2>
+            <p>Manage your personal information</p>
+        </div>
+
+                @if (_isLoading)
+                {
+                    <div class="text-center py-5">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                    </div>
+                }
+                else if (_user != null)
+                {
+                    <div class="mb-4">
+                        <div class="info-group mb-3">
+                            <label class="form-label text-muted small text-uppercase fw-bold">Email Address</label>
+                            <div class="form-control-plaintext">@_user.Email</div>
+                        </div>
+                        <div class="info-group mb-3">
+                            <label class="form-label text-muted small text-uppercase fw-bold">Member Since</label>
+                            <div class="form-control-plaintext">@_user.CreatedAt.ToString(_user.DateFormat)</div>
+                        </div>
+                    </div>
+
+                    <hr class="my-4" />
+
+                    <EditForm Model="@_updateRequest" OnValidSubmit="HandleSubmitAsync">
+                        <DataAnnotationsValidator />
+                        
+                        @if (!string.IsNullOrEmpty(_errorMessage))
+                        {
+                            <div class="alert alert-danger mb-3" role="alert">
+                                <i class="bi bi-exclamation-triangle-fill me-2"></i> @_errorMessage
+                            </div>
+                        }
+
+                        @if (!string.IsNullOrEmpty(_successMessage))
+                        {
+                            <div class="alert alert-success mb-3" role="alert">
+                                <i class="bi bi-check-circle-fill me-2"></i> @_successMessage
+                            </div>
+                        }
+
+                        <div class="mb-3">
+                            <label for="firstName" class="form-label">First Name</label>
+                            <InputText id="firstName" class="form-control" @bind-Value="_updateRequest.FirstName" placeholder="Enter first name" />
+                            <ValidationMessage For="@(() => _updateRequest.FirstName)" />
+                        </div>
+
+                        <div class="mb-4">
+                            <label for="lastName" class="form-label">Last Name</label>
+                            <InputText id="lastName" class="form-control" @bind-Value="_updateRequest.LastName" placeholder="Enter last name" />
+                            <ValidationMessage For="@(() => _updateRequest.LastName)" />
+                        </div>
+
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-primary btn-lg" disabled="@_isSaving">
+                                @if (_isSaving)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                                    <span>Saving...</span>
+                                }
+                                else
+                                {
+                                    <span>Save Changes</span>
+                                }
+                            </button>
+                        </div>
+                    </EditForm>
+                }
+            </div>
+    </div>
+
+
+@code {
+    private UserDto? _user;
+    private UpdateProfileRequest _updateRequest = new();
+    private bool _isLoading = true;
+    private bool _isSaving = false;
+    private string? _errorMessage;
+    private string? _successMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _user = await ApiClient.GetProfileAsync();
+            if (_user != null)
+            {
+                _updateRequest = new UpdateProfileRequest
+                {
+                    FirstName = _user.FirstName,
+                    LastName = _user.LastName
+                };
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.Error("Failed to load profile", ex);
+            _errorMessage = "Failed to load profile details.";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task HandleSubmitAsync()
+    {
+        _isSaving = true;
+        _errorMessage = null;
+        _successMessage = null;
+
+        try
+        {
+            var updatedUser = await ApiClient.UpdateProfileAsync(_updateRequest);
+            if (updatedUser != null)
+            {
+                _user = updatedUser;
+                _successMessage = "Profile updated successfully.";
+                Logger.Info("Profile updated successfully");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.Error("Failed to update profile", ex);
+            _errorMessage = "Failed to update profile. Please try again.";
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+}

@@ -1,0 +1,69 @@
+@using BudgetTracker.Web.Logging
+@using Microsoft.AspNetCore.Components.WebAssembly.Hosting
+@inject IClientLogger Logger
+@inject IWebAssemblyHostEnvironment Environment
+
+<div class="error-boundary-content">
+    <div class="error-card">
+        <div class="error-header">
+            <h3>Something went wrong</h3>
+        </div>
+        
+        <div class="error-body">
+            @if (Environment.IsDevelopment())
+            {
+                <div class="alert alert-danger" role="alert">
+                    @Exception?.Message
+                </div>
+                <div class="technical-details">
+                    <details>
+                        <summary>Technical Details</summary>
+                        <div class="tech-info">
+                            <div><strong>Time:</strong> @DateTime.Now.ToString("O")</div>
+                            <div><strong>Correlation ID:</strong> @CorrelationId</div>
+                            <div><strong>Stack Trace:</strong></div>
+                            <pre class="stack-trace">@Exception?.ToString()</pre>
+                        </div>
+                    </details>
+                </div>
+            }
+            else
+            {
+                <p>
+                    We're sorry, but an unexpected error has occurred. 
+                    The error has been logged with ID <code>@CorrelationId</code>.
+                </p>
+            }
+        </div>
+
+        <div class="error-actions">
+            <button class="btn btn-primary" @onclick="Recover">Try Again</button>
+            <a href="/" class="btn btn-outline-secondary">Go Home</a>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public Exception? Exception { get; set; }
+    [Parameter] public EventCallback OnRecover { get; set; }
+    [Parameter] public string? CorrelationId { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        if (Exception != null)
+        {
+            Logger.Error(
+                "Unhandled exception in error boundary: {0}",
+                Exception,
+                Exception.Message);
+        }
+    }
+
+    private async Task Recover()
+    {
+        if (OnRecover.HasDelegate)
+        {
+            await OnRecover.InvokeAsync();
+        }
+    }
+}

@@ -1,0 +1,50 @@
+<Project>
+  <ItemGroup>
+    <!-- FastEndpoints -->
+    <PackageVersion Include="FastEndpoints" Version="5.31.0" />
+    <PackageVersion Include="FastEndpoints.Swagger" Version="5.31.0" />
+    <!-- Validation -->
+    <PackageVersion Include="FluentValidation" Version="11.11.0" />
+    <!-- Entity Framework Core -->
+    <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="9.0.4" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Tools" Version="9.0.0" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.0" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.InMemory" Version="9.0.0" />
+    <PackageVersion Include="Refit.HttpClientFactory" Version="9.0.2" />
+    <!-- Serilog -->
+    <PackageVersion Include="Serilog.AspNetCore" Version="8.0.3" />
+    <PackageVersion Include="Serilog.Sinks.Console" Version="6.0.0" />
+    <PackageVersion Include="Serilog.Sinks.File" Version="6.0.0" />
+    <PackageVersion Include="Serilog.Enrichers.Environment" Version="3.0.1" />
+    <PackageVersion Include="Serilog.Enrichers.Thread" Version="4.0.0" />
+    <PackageVersion Include="Serilog.Enrichers.CorrelationId" Version="3.0.1" />
+    <!-- OpenAPI -->
+    <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="9.0.0" />
+    <PackageVersion Include="Swashbuckle.AspNetCore" Version="7.2.0" />
+    <!-- Rate Limiting -->
+    <PackageVersion Include="AspNetCoreRateLimit" Version="5.0.0" />
+    <!-- Authentication -->
+    <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="9.0.0" />
+    <!-- Supabase -->
+    <PackageVersion Include="supabase-csharp" Version="0.16.2" />
+    <!-- Blazor -->
+    <PackageVersion Include="Microsoft.AspNetCore.Components.WebAssembly" Version="9.0.0" />
+    <PackageVersion Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="9.0.0" />
+    <PackageVersion Include="Microsoft.AspNetCore.Components.Authorization" Version="9.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.Http" Version="9.0.3" />
+    <PackageVersion Include="Blazored.LocalStorage" Version="4.5.0" />
+
+    <!-- Testing -->
+    <PackageVersion Include="xunit" Version="2.9.2" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageVersion Include="coverlet.collector" Version="6.0.2" />
+    <PackageVersion Include="Moq" Version="4.20.72" /> <!-- Keeping Moq for now if used elsewhere, but plan to replace -->
+    <PackageVersion Include="NSubstitute" Version="5.1.0" />
+    <PackageVersion Include="AutoFixture" Version="4.18.1" />
+    <PackageVersion Include="FluentAssertions" Version="7.0.0" />
+    <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="9.0.0" />
+    <PackageVersion Include="Testcontainers.PostgreSql" Version="3.8.0" />
+    <PackageVersion Include="Respawn" Version="6.2.1" />
+  </ItemGroup>
+</Project>

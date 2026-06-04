@@ -1,0 +1,166 @@
+@page "/settings"
+@using BudgetTracker.Shared.DTOs.Auth
+@using BudgetTracker.Shared.DTOs.Users
+@using BudgetTracker.Web.Services
+@using BudgetTracker.Web.Logging
+@inject IApiClient ApiClient
+@inject IClientLogger Logger
+@attribute [Authorize]
+
+<PageTitle>Settings - Budget Tracker</PageTitle>
+
+<div class="auth-page fade-in">
+    <div class="auth-card">
+        <div class="settings-header">
+            <div class="settings-icon">
+                <i class="bi bi-gear-fill"></i>
+            </div>
+            <h2>Settings</h2>
+            <p>Configure your application preferences</p>
+        </div>
+
+                @if (_isLoading)
+                {
+                    <div class="text-center py-5">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <EditForm Model="@_updateRequest" OnValidSubmit="HandleSubmitAsync">
+                        <DataAnnotationsValidator />
+
+                        @if (!string.IsNullOrEmpty(_errorMessage))
+                        {
+                            <div class="alert alert-danger mb-3" role="alert">
+                                <i class="bi bi-exclamation-triangle-fill me-2"></i> @_errorMessage
+                            </div>
+                        }
+
+                        @if (!string.IsNullOrEmpty(_successMessage))
+                        {
+                            <div class="alert alert-success mb-3" role="alert">
+                                <i class="bi bi-check-circle-fill me-2"></i> @_successMessage
+                            </div>
+                        }
+
+                        <div class="mb-4">
+                            <label for="currency" class="form-label">Preferred Currency</label>
+                            <InputSelect id="currency" class="form-select" @bind-Value="_updateRequest.PreferredCurrency">
+                                @foreach (var currency in _currencies)
+                                {
+                                    <option value="@currency">@currency</option>
+                                }
+                            </InputSelect>
+                            <div class="form-text">Select the currency for your budget and expenses.</div>
+                            <ValidationMessage For="@(() => _updateRequest.PreferredCurrency)" />
+                        </div>
+
+                        <div class="mb-4">
+                            <label for="dateFormat" class="form-label">Date Format</label>
+                            <InputSelect id="dateFormat" class="form-select" @bind-Value="_updateRequest.DateFormat">
+                                @foreach (var format in _dateFormats)
+                                {
+                                    <option value="@format">@format (@DateTime.Now.ToString(format))</option>
+                                }
+                            </InputSelect>
+                            <div class="form-text">Choose how dates are displayed throughout the application.</div>
+                            <ValidationMessage For="@(() => _updateRequest.DateFormat)" />
+                        </div>
+
+                        <div class="mb-4">
+                            <label for="theme" class="form-label">Theme</label>
+                            <InputSelect id="theme" class="form-select" @bind-Value="_updateRequest.Theme">
+                                @foreach (var theme in _themes)
+                                {
+                                    <option value="@theme">@System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(theme)</option>
+                                }
+                            </InputSelect>
+                            <div class="form-text">Select your preferred appearance.</div>
+                            <ValidationMessage For="@(() => _updateRequest.Theme)" />
+                        </div>
+
+                        <div class="d-grid mt-5">
+                            <button type="submit" class="btn btn-primary btn-lg" disabled="@_isSaving">
+                                @if (_isSaving)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                                    <span>Saving...</span>
+                                }
+                                else
+                                {
+                                    <span>Save Settings</span>
+                                }
+                            </button>
+                        </div>
+                    </EditForm>
+                }
+            </div>
+    </div>
+
+
+@code {
+    private UpdateSettingsRequest _updateRequest = new();
+    private bool _isLoading = true;
+    private bool _isSaving = false;
+    private string? _errorMessage;
+    private string? _successMessage;
+
+    private readonly string[] _currencies = { "USD", "EUR", "GBP", "JPY", "CAD", "AUD", "CHF", "CNY", "SEK", "NZD" };
+    private readonly string[] _dateFormats = { "yyyy-MM-dd", "dd/MM/yyyy", "MM/dd/yyyy", "dd-MM-yyyy" };
+    private readonly string[] _themes = { "light", "dark", "system" };
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var user = await ApiClient.GetProfileAsync();
+            if (user != null)
+            {
+                _updateRequest = new UpdateSettingsRequest
+                {
+                    PreferredCurrency = user.PreferredCurrency,
+                    DateFormat = user.DateFormat,
+                    Theme = user.Theme
+                };
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.Error("Failed to load settings", ex);
+            _errorMessage = "Failed to load settings.";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task HandleSubmitAsync()
+    {
+        _isSaving = true;
+        _errorMessage = null;
+        _successMessage = null;
+
+        try
+        {
+            var updatedUser = await ApiClient.UpdateSettingsAsync(_updateRequest);
+            if (updatedUser != null)
+            {
+                _successMessage = "Settings saved successfully.";
+                Logger.Info("Settings updated successfully");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.Error("Failed to update settings", ex);
+            _errorMessage = "Failed to update settings. Please try again.";
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+}

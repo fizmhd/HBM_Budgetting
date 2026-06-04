@@ -1,0 +1,117 @@
+@page "/register"
+@using BudgetTracker.Shared.DTOs.Auth
+@using BudgetTracker.Web.Services
+@using BudgetTracker.Web.Services.ErrorHandling
+@using BudgetTracker.Web.Components.Shared
+@using Microsoft.AspNetCore.Authorization
+@attribute [AllowAnonymous]
+@inject IApiClient ApiClient
+@inject NavigationManager Navigation
+@inject ApiErrorHandler ErrorHandler
+
+<div class="auth-page">
+    <div class="auth-card">
+        <h2>Create Your Account</h2>
+
+        @if (!string.IsNullOrEmpty(_errorMessage))
+        {
+            <ErrorAlert Message="@_errorMessage" />
+        }
+
+        @if (_registrationSuccess)
+        {
+            <div class="alert alert-success">
+                <p>Registration successful! Please check your email to confirm your account.</p>
+                <a href="/login" class="btn btn-primary">Go to Login</a>
+            </div>
+        }
+        else
+        {
+            <EditForm Model="@_registerRequest" OnValidSubmit="@HandleRegister">
+                <DataAnnotationsValidator />
+                <ValidationSummary />
+
+                <div class="form-group">
+                    <label for="email">Email</label>
+                    <InputText id="email" @bind-Value="_registerRequest.Email" class="form-control" placeholder="Enter your email" />
+                    <ValidationMessage For="@(() => _registerRequest.Email)" />
+                </div>
+
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <InputText id="password" type="password" @bind-Value="_registerRequest.Password" class="form-control" placeholder="Enter your password" />
+                    <ValidationMessage For="@(() => _registerRequest.Password)" />
+                </div>
+
+                <div class="form-group">
+                    <label for="confirmPassword">Confirm Password</label>
+                    <InputText id="confirmPassword" type="password" @bind-Value="_registerRequest.ConfirmPassword" class="form-control" placeholder="Confirm your password" />
+                    @if (!string.IsNullOrEmpty(_registerRequest.ConfirmPassword) && _registerRequest.Password != _registerRequest.ConfirmPassword)
+                    {
+                        <div class="validation-message">Passwords do not match</div>
+                    }
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary btn-block" disabled="@(_isLoading || _registerRequest.Password != _registerRequest.ConfirmPassword)">
+                        @if (_isLoading)
+                        {
+                            <LoadingSpinner />
+                            <span>Registering...</span>
+                        }
+                        else
+                        {
+                            <span>Register</span>
+                        }
+                    </button>
+                </div>
+            </EditForm>
+
+            <div class="auth-links">
+                <a href="/login">Already have an account? Login</a>
+            </div>
+        }
+    </div>
+</div>
+
+
+
+@code {
+    private RegisterRequest _registerRequest = new();
+
+    private bool _isLoading = false;
+    private bool _registrationSuccess = false;
+    private string? _errorMessage;
+
+    private async Task HandleRegister()
+    {
+        _isLoading = true;
+        _errorMessage = null;
+
+        try
+        {
+            await ApiClient.RegisterAsync(_registerRequest);
+            _registrationSuccess = true;
+        }
+        catch (Exception ex)
+        {
+            var result = ErrorHandler.Handle(ex, "Registration failed");
+            
+            if (result.ValidationErrors != null && result.ValidationErrors.Any())
+            {
+                // Format validation errors for display
+                _errorMessage = string.Join("\n", result.ValidationErrors.SelectMany(kvp => kvp.Value));
+            }
+            else
+            {
+                _errorMessage = result.UserMessage;
+            }
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+
+}

@@ -1,0 +1,14 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "BudgetTracker Dev",
+      "Group": "Servers",
+      "Host": "postgres",
+      "Port": 5432,
+      "MaintenanceDB": "BudgetTracker_Dev",
+      "Username": "postgres",
+      "SSLMode": "prefer",
+      "Comment": "Local BudgetTracker development database (docker-compose). Password: postgres"
+    }
+  }
+}

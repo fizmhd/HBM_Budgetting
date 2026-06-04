@@ -1,0 +1,123 @@
+@page "/"
+@attribute [AllowAnonymous]
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthStateProvider
+
+<PageTitle>Budget Tracker - Take Control of Your Finances</PageTitle>
+
+<AuthorizeView>
+    <Authorized>
+        <div class="dashboard-container">
+            <div class="dashboard-header">
+                <h1>Welcome back, @context.User.Identity?.Name! 👋</h1>
+                <p class="subtitle">Here's your financial overview</p>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon">💵</div>
+                    <div class="stat-content">
+                        <p class="stat-label">Total Balance</p>
+                        <h3 class="stat-value">$0.00</h3>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">📊</div>
+                    <div class="stat-content">
+                        <p class="stat-label">This Month</p>
+                        <h3 class="stat-value">$0.00</h3>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">🎯</div>
+                    <div class="stat-content">
+                        <p class="stat-label">Budget Left</p>
+                        <h3 class="stat-value">$0.00</h3>
+                    </div>
+                </div>
+            </div>
+
+            <div class="quick-actions">
+                <h2>Quick Actions</h2>
+                <div class="action-grid">
+                    <a href="/transactions/new" class="action-card">
+                        <span class="action-icon">➕</span>
+                        <span class="action-text">Add Transaction</span>
+                    </a>
+                    <a href="/budgets/new" class="action-card">
+                        <span class="action-icon">🎯</span>
+                        <span class="action-text">Create Budget</span>
+                    </a>
+                    <a href="/reports" class="action-card">
+                        <span class="action-icon">📈</span>
+                        <span class="action-text">View Reports</span>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </Authorized>
+    <NotAuthorized>
+        <div class="landing-page">
+            <section class="hero">
+                <div class="hero-content">
+                    <h1 class="hero-title">Take Control of Your Finances</h1>
+                    <p class="hero-subtitle">Track expenses, set budgets, and achieve your financial goals with Budget Tracker</p>
+                    <div class="hero-actions">
+                        <a href="/register" class="btn btn-primary btn-lg">Get Started Free</a>
+                        <a href="/login" class="btn btn-secondary btn-lg">Sign In</a>
+                    </div>
+                </div>
+            </section>
+
+            <section class="features">
+                <div class="features-container">
+                    <h2 class="section-title">Everything you need to manage your money</h2>
+                    <div class="features-grid">
+                        <div class="feature-card">
+                            <div class="feature-icon">📊</div>
+                            <h3>Track Expenses</h3>
+                            <p>Monitor your spending across categories and see where your money goes</p>
+                        </div>
+                        <div class="feature-card">
+                            <div class="feature-icon">🎯</div>
+                            <h3>Set Budgets</h3>
+                            <p>Create budgets for different categories and stay on track with your goals</p>
+                        </div>
+                        <div class="feature-card">
+                            <div class="feature-icon">📈</div>
+                            <h3>View Reports</h3>
+                            <p>Analyze your financial trends with detailed reports and insights</p>
+                        </div>
+                        <div class="feature-card">
+                            <div class="feature-icon">🔒</div>
+                            <h3>Secure & Private</h3>
+                            <p>Your financial data is encrypted and protected with industry-standard security</p>
+                        </div>
+                        <div class="feature-card">
+                            <div class="feature-icon">📱</div>
+                            <h3>Responsive Design</h3>
+                            <p>Access your budget from any device - desktop, tablet, or mobile</p>
+                        </div>
+                        <div class="feature-card">
+                            <div class="feature-icon">⚡</div>
+                            <h3>Fast & Simple</h3>
+                            <p>Clean, intuitive interface that makes budgeting easy and enjoyable</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="cta">
+                <div class="cta-content">
+                    <h2>Ready to take control?</h2>
+                    <p>Join thousands of users managing their finances smarter</p>
+                    <a href="/register" class="btn btn-primary btn-lg">Start Free Today</a>
+                </div>
+            </section>
+        </div>
+    </NotAuthorized>
+</AuthorizeView>
+
+

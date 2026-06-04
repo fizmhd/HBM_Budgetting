@@ -1,0 +1,58 @@
+﻿@using Microsoft.AspNetCore.Components.Authorization
+@using BudgetTracker.Web.Components.Layout
+
+@using BudgetTracker.Web.Components.Shared
+
+<CascadingAuthenticationState>
+    <ErrorBoundary @ref="_errorBoundary">
+        <ChildContent>
+            <Router AppAssembly="@typeof(App).Assembly">
+                <Found Context="routeData">
+                    <AuthorizeRouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)">
+                        <NotAuthorized>
+                            @if (context.User.Identity?.IsAuthenticated != true)
+                            {
+                                <RedirectToLogin />
+                            }
+                            else
+                            {
+                                <p role="alert">You are not authorized to access this page.</p>
+                            }
+                        </NotAuthorized>
+                        <Authorizing>
+                            <div class="loading-container">
+                                <p>Loading...</p>
+                            </div>
+                        </Authorizing>
+                    </AuthorizeRouteView>
+                    <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+                </Found>
+                <NotFound>
+                    <PageTitle>Not found</PageTitle>
+                    <LayoutView Layout="@typeof(MainLayout)">
+                        <p role="alert">Sorry, there's nothing at this address.</p>
+                    </LayoutView>
+                </NotFound>
+            </Router>
+        </ChildContent>
+        <ErrorContent Context="exception">
+            <ErrorBoundaryContent
+                Exception="exception"
+                OnRecover="RecoverFromError"
+                CorrelationId="@_correlationId" />
+        </ErrorContent>
+    </ErrorBoundary>
+</CascadingAuthenticationState>
+
+@code {
+    private ErrorBoundary? _errorBoundary;
+    private string _correlationId = Guid.NewGuid().ToString();
+
+    private void RecoverFromError()
+    {
+        _errorBoundary?.Recover();
+        _correlationId = Guid.NewGuid().ToString();
+    }
+}
+
+
