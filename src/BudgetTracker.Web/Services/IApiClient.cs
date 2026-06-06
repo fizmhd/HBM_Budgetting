@@ -3,6 +3,7 @@ using BudgetTracker.Shared.DTOs.Auth;
 using BudgetTracker.Shared.DTOs.Budgets;
 using BudgetTracker.Shared.DTOs.Categories;
 using BudgetTracker.Shared.DTOs.Households;
+using BudgetTracker.Shared.DTOs.Recurring;
 using BudgetTracker.Shared.DTOs.Transactions;
 using BudgetTracker.Shared.DTOs.Users;
 using Refit;
@@ -128,6 +129,40 @@ public interface IApiClient
 
     [Delete("/api/v1/budgets/{id}")]
     Task DeleteBudgetAsync(Guid id);
+
+    // Recurring endpoints
+    [Get("/api/v1/recurring")]
+    Task<List<RecurringRuleDto>?> GetRecurringRulesAsync([Query] string? kind = null);
+
+    [Get("/api/v1/recurring/{id}")]
+    Task<RecurringRuleDto?> GetRecurringRuleAsync(Guid id);
+
+    [Post("/api/v1/recurring")]
+    Task<RecurringRuleDto?> CreateRecurringRuleAsync([Body] CreateRecurringRuleRequest request);
+
+    [Put("/api/v1/recurring/{id}")]
+    Task<RecurringRuleDto?> UpdateRecurringRuleAsync(Guid id, [Body] UpdateRecurringRuleRequest request);
+
+    [Delete("/api/v1/recurring/{id}")]
+    Task DeleteRecurringRuleAsync(Guid id);
+
+    [Post("/api/v1/recurring/{id}/pause")]
+    Task<RecurringRuleDto?> PauseRecurringRuleAsync(Guid id);
+
+    [Post("/api/v1/recurring/{id}/resume")]
+    Task<RecurringRuleDto?> ResumeRecurringRuleAsync(Guid id);
+
+    [Post("/api/v1/recurring/generate")]
+    Task<RecurringGenerationResultDto?> GenerateRecurringNowAsync();
+
+    [Get("/api/v1/recurring/occurrences/pending")]
+    Task<List<RecurringOccurrenceDto>?> GetPendingOccurrencesAsync();
+
+    [Post("/api/v1/recurring/occurrences/{id}/skip")]
+    Task<RecurringOccurrenceDto?> SkipOccurrenceAsync(Guid id, [Body] SkipOccurrenceRequest request);
+
+    [Post("/api/v1/recurring/occurrences/{id}/confirm")]
+    Task<RecurringOccurrenceDto?> ConfirmOccurrenceAsync(Guid id);
 }
 
 /// <summary>
