@@ -61,6 +61,8 @@ public partial class Program {
         builder.Services.AddScoped<ITransactionRepository, TransactionRepository>();
         builder.Services.AddScoped<ITagRepository, TagRepository>();
         builder.Services.AddScoped<IBudgetRepository, BudgetRepository>();
+        builder.Services.AddScoped<IRecurringRuleRepository, RecurringRuleRepository>();
+        builder.Services.AddScoped<IRecurringOccurrenceRepository, RecurringOccurrenceRepository>();
 
         // Configure Options
         builder.Services.Configure<SupabaseOptions>(
@@ -112,6 +114,19 @@ public partial class Program {
         // Application email (MVP: logs instead of sending). Swap for a real provider here.
         builder.Services.AddScoped<BudgetTracker.Api.Infrastructure.Email.IEmailSender,
             BudgetTracker.Api.Infrastructure.Email.LoggingEmailSender>();
+
+        // Domain services (Recurring)
+        builder.Services.AddScoped<IRecurringGenerationService,
+            BudgetTracker.Api.Services.Recurring.RecurringGenerationService>();
+        builder.Services.AddScoped<BudgetTracker.Api.Features.Recurring.RecurringWriteService>();
+        builder.Services.AddScoped<BudgetTracker.Api.Features.Recurring.RecurringDtoFactory>();
+
+        // The daily generation job — excluded from Testing (no Npgsql DbContext; tests drive
+        // generation via the manual endpoint).
+        if (!builder.Environment.IsEnvironment("Testing"))
+        {
+            builder.Services.AddHostedService<BudgetTracker.Api.Services.Recurring.RecurringGenerationBackgroundService>();
+        }
 
         // Add Security Services
         builder.Services.AddScoped<ICsrfService, CsrfService>();
