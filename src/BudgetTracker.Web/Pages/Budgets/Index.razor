@@ -1,13 +1,430 @@
 @page "/budgets"
+@using BudgetTracker.Shared.DTOs.Budgets
+@using BudgetTracker.Shared.DTOs.Categories
+@using BudgetTracker.Web.Services
+@using BudgetTracker.Web.Services.ErrorHandling
+@using BudgetTracker.Web.Components.Shared
 @using Microsoft.AspNetCore.Authorization
 @attribute [Authorize]
+@inject IApiClient ApiClient
+@inject ApiErrorHandler ErrorHandler
 
 <PageTitle>Budgets - Budget Tracker</PageTitle>
 
 <div class="container py-4">
-    <h1 class="h3 mb-3">Budgets</h1>
-    <div class="alert alert-info" role="alert">
-        <i class="bi bi-clock-history me-2"></i>
-        Budgets arrive in Sprint 6. This section is part of the navigation shell.
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1 class="h3 mb-0">Budgets</h1>
+        <button class="btn btn-primary" @onclick="OpenCreate">
+            <i class="bi bi-plus-lg me-1"></i> Add budget
+        </button>
     </div>
+
+    <!-- Month quick-nav -->
+    <div class="card shadow-sm mb-3">
+        <div class="card-body d-flex align-items-center">
+            <button class="btn btn-outline-secondary btn-sm" @onclick="() => ShiftMonth(-1)" title="Previous month">
+                <i class="bi bi-chevron-left"></i>
+            </button>
+            <span class="mx-3 fw-semibold">@_monthLabel</span>
+            <button class="btn btn-outline-secondary btn-sm" @onclick="() => ShiftMonth(1)" title="Next month">
+                <i class="bi bi-chevron-right"></i>
+            </button>
+            <span class="ms-3 text-muted small">Showing budgets active in this month.</span>
+        </div>
+    </div>
+
+    @if (_isLoading)
+    {
+        <LoadingSpinner />
+    }
+    else if (!string.IsNullOrEmpty(_errorMessage))
+    {
+        <ErrorAlert Message="@_errorMessage" />
+    }
+    else if (_budgets.Count == 0)
+    {
+        <div class="alert alert-info">No budgets for @_monthLabel. Add one to start tracking spending against a limit.</div>
+    }
+    else
+    {
+        <div class="row g-3">
+            @foreach (var b in _budgets)
+            {
+                <div class="col-md-6 col-lg-4">
+                    <div class="card shadow-sm h-100">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start mb-1">
+                                <h5 class="card-title mb-0">@(b.CategoryName ?? "—")</h5>
+                                <span class="badge @StatusBadgeClass(b.Status)">@StatusLabel(b.Status)</span>
+                            </div>
+                            <div class="text-muted small mb-2">
+                                @b.PeriodStart.ToString("yyyy-MM-dd") – @b.PeriodEnd.ToString("yyyy-MM-dd")
+                                @if (b.IsShared)
+                                {
+                                    <span class="badge bg-light text-dark border ms-1">Shared</span>
+                                }
+                            </div>
+
+                            <div class="progress mb-2" style="height: 1.25rem;" role="progressbar"
+                                 aria-valuenow="@((int)b.PercentUsed)" aria-valuemin="0" aria-valuemax="100">
+                                <div class="progress-bar @StatusBarClass(b.Status)"
+                                     style="width: @(Math.Min(100, b.PercentUsed).ToString(System.Globalization.CultureInfo.InvariantCulture))%;">
+                                    @b.PercentUsed.ToString("N0")%
+                                </div>
+                            </div>
+
+                            <div class="d-flex justify-content-between small">
+                                <span><strong>@b.Spent.ToString("N2")</strong> spent</span>
+                                <span class="@(b.Remaining < 0 ? "text-danger" : "text-muted")">
+                                    @b.Remaining.ToString("N2") left
+                                </span>
+                                <span class="text-muted">of @b.Amount.ToString("N2")</span>
+                            </div>
+
+                            @if (b.Status != "Ok")
+                            {
+                                <div class="alert @StatusAlertClass(b.Status) py-1 px-2 small mt-2 mb-0">
+                                    <i class="bi bi-exclamation-triangle me-1"></i>
+                                    @(b.Status == "Exceeded"
+                                        ? "Over budget."
+                                        : $"Nearing the limit (alert at {b.AlertThresholdPercent}%).")
+                                </div>
+                            }
+                        </div>
+                        <div class="card-footer bg-transparent d-flex justify-content-end">
+                            <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => OpenEdit(b)" disabled="@_isWorking">Edit</button>
+                            <button class="btn btn-sm btn-outline-danger" @onclick="() => Delete(b)" disabled="@_isWorking">Delete</button>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
 </div>
+
+@if (_showModal)
+{
+    <div class="modal fade show d-block" tabindex="-1" role="dialog">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">@(_isEdit ? "Edit budget" : "Add budget")</h5>
+                    <button type="button" class="btn-close" @onclick="CloseModal"></button>
+                </div>
+                <div class="modal-body">
+                    @if (!string.IsNullOrEmpty(_modalError))
+                    {
+                        <div class="alert alert-danger">@_modalError</div>
+                    }
+
+                    <div class="mb-3">
+                        <label class="form-label">Category</label>
+                        <CategoryPicker Tree="_tree" SelectedCategoryId="_form.CategoryId"
+                                        SelectedCategoryIdChanged="v => _form.CategoryId = v" />
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Period</label>
+                        <select class="form-select" @bind="_form.PeriodType">
+                            <option value="Month">Month</option>
+                            <option value="CustomRange">Custom range</option>
+                        </select>
+                    </div>
+
+                    @if (_form.PeriodType == "Month")
+                    {
+                        <div class="mb-3">
+                            <label class="form-label">Month</label>
+                            <input type="month" class="form-control" value="@_form.MonthValue"
+                                   @onchange="OnMonthChanged" />
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="row g-2 mb-3">
+                            <div class="col-6">
+                                <label class="form-label">Start</label>
+                                <input type="date" class="form-control" @bind="_form.PeriodStart" />
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label">End</label>
+                                <input type="date" class="form-control" @bind="_form.PeriodEnd" />
+                            </div>
+                        </div>
+                    }
+
+                    <div class="row g-2 mb-3">
+                        <div class="col-6">
+                            <label class="form-label">Amount</label>
+                            <input type="number" step="0.01" class="form-control" @bind="_form.Amount" />
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label">Alert at (%)</label>
+                            <input type="number" min="1" max="100" class="form-control" @bind="_form.AlertThresholdPercent" />
+                        </div>
+                    </div>
+
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="budgetShared" @bind="_form.IsShared" />
+                        <label class="form-check-label" for="budgetShared">Share with household</label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CloseModal" disabled="@_isWorking">Cancel</button>
+                    <button type="button" class="btn btn-primary" @onclick="Save" disabled="@(_isWorking || !CanSubmit)">
+                        @if (_isWorking)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        Save
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+@code {
+    private sealed class BudgetForm
+    {
+        public Guid? Id { get; set; }
+        public Guid? CategoryId { get; set; }
+        public string PeriodType { get; set; } = "Month";
+        public DateTime PeriodStart { get; set; } = DateTime.Today;
+        public DateTime PeriodEnd { get; set; } = DateTime.Today;
+        public decimal Amount { get; set; }
+        public int AlertThresholdPercent { get; set; } = 80;
+        public bool IsShared { get; set; }
+
+        /// <summary>Value bound to the &lt;input type="month"&gt; control ("yyyy-MM").</summary>
+        public string MonthValue => PeriodStart.ToString("yyyy-MM");
+    }
+
+    private List<BudgetDto> _budgets = new();
+    private List<CategoryTreeNodeDto> _tree = new();
+
+    private bool _isLoading = true;
+    private bool _isWorking;
+    private string? _errorMessage;
+
+    private DateTime _month = DateTime.Today;
+    private string _monthLabel => _month.ToString("MMMM yyyy");
+
+    private bool _showModal;
+    private bool _isEdit;
+    private string? _modalError;
+    private BudgetForm _form = new();
+
+    private bool CanSubmit =>
+        _form.CategoryId is not null && _form.Amount > 0 &&
+        _form.AlertThresholdPercent is >= 1 and <= 100 &&
+        _form.PeriodEnd.Date >= _form.PeriodStart.Date;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadReferenceDataAsync();
+        await LoadAsync();
+    }
+
+    private async Task LoadReferenceDataAsync()
+    {
+        try
+        {
+            _tree = await ApiClient.GetCategoryTreeAsync() ?? new();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ErrorHandler.Handle(ex, "Failed to load categories").UserMessage;
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        _isLoading = true;
+        _errorMessage = null;
+        try
+        {
+            var (from, to) = MonthRange(_month);
+            var query = new BudgetQuery
+            {
+                From = from.ToString("yyyy-MM-dd"),
+                To = to.ToString("yyyy-MM-dd")
+            };
+            _budgets = await ApiClient.GetBudgetsAsync(query) ?? new();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ErrorHandler.Handle(ex, "Failed to load budgets").UserMessage;
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private static (DateOnly From, DateOnly To) MonthRange(DateTime month)
+    {
+        var from = new DateOnly(month.Year, month.Month, 1);
+        return (from, from.AddMonths(1).AddDays(-1));
+    }
+
+    private async Task ShiftMonth(int delta)
+    {
+        _month = _month.AddMonths(delta);
+        await LoadAsync();
+    }
+
+    private void OpenCreate()
+    {
+        _isEdit = false;
+        _modalError = null;
+        var (from, to) = MonthRange(_month);
+        _form = new BudgetForm
+        {
+            PeriodType = "Month",
+            PeriodStart = from.ToDateTime(TimeOnly.MinValue),
+            PeriodEnd = to.ToDateTime(TimeOnly.MinValue),
+            AlertThresholdPercent = 80
+        };
+        _showModal = true;
+    }
+
+    private void OpenEdit(BudgetDto b)
+    {
+        _isEdit = true;
+        _modalError = null;
+        _form = new BudgetForm
+        {
+            Id = b.Id,
+            CategoryId = b.CategoryId,
+            PeriodType = b.PeriodType,
+            PeriodStart = b.PeriodStart.ToDateTime(TimeOnly.MinValue),
+            PeriodEnd = b.PeriodEnd.ToDateTime(TimeOnly.MinValue),
+            Amount = b.Amount,
+            AlertThresholdPercent = b.AlertThresholdPercent,
+            IsShared = b.IsShared
+        };
+        _showModal = true;
+    }
+
+    private void CloseModal() => _showModal = false;
+
+    private void OnMonthChanged(ChangeEventArgs e)
+    {
+        if (DateTime.TryParse($"{e.Value}-01", out var parsed))
+        {
+            var from = new DateTime(parsed.Year, parsed.Month, 1);
+            _form.PeriodStart = from;
+            _form.PeriodEnd = from.AddMonths(1).AddDays(-1);
+        }
+    }
+
+    private async Task Save()
+    {
+        if (!CanSubmit)
+        {
+            _modalError = "Please complete the form. Amount must be positive and the period valid.";
+            return;
+        }
+
+        _isWorking = true;
+        _modalError = null;
+        try
+        {
+            // For a Month budget, snap the period to the whole selected month.
+            if (_form.PeriodType == "Month")
+            {
+                var from = new DateTime(_form.PeriodStart.Year, _form.PeriodStart.Month, 1);
+                _form.PeriodStart = from;
+                _form.PeriodEnd = from.AddMonths(1).AddDays(-1);
+            }
+
+            var request = new CreateBudgetRequest
+            {
+                CategoryId = _form.CategoryId!.Value,
+                PeriodType = _form.PeriodType,
+                PeriodStart = DateOnly.FromDateTime(_form.PeriodStart),
+                PeriodEnd = DateOnly.FromDateTime(_form.PeriodEnd),
+                Amount = _form.Amount,
+                AlertThresholdPercent = _form.AlertThresholdPercent,
+                IsShared = _form.IsShared
+            };
+
+            if (_isEdit && _form.Id.HasValue)
+            {
+                await ApiClient.UpdateBudgetAsync(_form.Id.Value, new UpdateBudgetRequest
+                {
+                    CategoryId = request.CategoryId,
+                    PeriodType = request.PeriodType,
+                    PeriodStart = request.PeriodStart,
+                    PeriodEnd = request.PeriodEnd,
+                    Amount = request.Amount,
+                    AlertThresholdPercent = request.AlertThresholdPercent,
+                    IsShared = request.IsShared
+                });
+            }
+            else
+            {
+                await ApiClient.CreateBudgetAsync(request);
+            }
+
+            _showModal = false;
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _modalError = ErrorHandler.Handle(ex, "Failed to save budget").UserMessage;
+        }
+        finally
+        {
+            _isWorking = false;
+        }
+    }
+
+    private async Task Delete(BudgetDto b)
+    {
+        _isWorking = true;
+        _errorMessage = null;
+        try
+        {
+            await ApiClient.DeleteBudgetAsync(b.Id);
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ErrorHandler.Handle(ex, "Failed to delete budget").UserMessage;
+        }
+        finally
+        {
+            _isWorking = false;
+        }
+    }
+
+    private static string StatusLabel(string status) => status switch
+    {
+        "Exceeded" => "Exceeded",
+        "Warning" => "Warning",
+        _ => "On track"
+    };
+
+    private static string StatusBadgeClass(string status) => status switch
+    {
+        "Exceeded" => "bg-danger",
+        "Warning" => "bg-warning text-dark",
+        _ => "bg-success"
+    };
+
+    private static string StatusBarClass(string status) => status switch
+    {
+        "Exceeded" => "bg-danger",
+        "Warning" => "bg-warning text-dark",
+        _ => "bg-success"
+    };
+
+    private static string StatusAlertClass(string status) => status switch
+    {
+        "Exceeded" => "alert-danger",
+        _ => "alert-warning"
+    };
+}

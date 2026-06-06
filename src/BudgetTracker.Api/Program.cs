@@ -60,6 +60,7 @@ public partial class Program {
         builder.Services.AddScoped<ICategoryRepository, CategoryRepository>();
         builder.Services.AddScoped<ITransactionRepository, TransactionRepository>();
         builder.Services.AddScoped<ITagRepository, TagRepository>();
+        builder.Services.AddScoped<IBudgetRepository, BudgetRepository>();
 
         // Configure Options
         builder.Services.Configure<SupabaseOptions>(
@@ -102,6 +103,15 @@ public partial class Program {
         builder.Services.AddScoped<ITransactionService, TransactionService>();
         builder.Services.AddScoped<IBalanceService, BalanceService>();
         builder.Services.AddScoped<BudgetTracker.Api.Features.Transactions.TransactionWriteService>();
+
+        // Domain services (Budgets)
+        builder.Services.AddScoped<IBudgetAlertService, BudgetTracker.Api.Services.Budgets.BudgetAlertService>();
+        builder.Services.AddScoped<BudgetTracker.Api.Features.Budgets.BudgetProgressService>();
+        builder.Services.AddScoped<BudgetTracker.Api.Features.Budgets.BudgetWriteService>();
+
+        // Application email (MVP: logs instead of sending). Swap for a real provider here.
+        builder.Services.AddScoped<BudgetTracker.Api.Infrastructure.Email.IEmailSender,
+            BudgetTracker.Api.Infrastructure.Email.LoggingEmailSender>();
 
         // Add Security Services
         builder.Services.AddScoped<ICsrfService, CsrfService>();
