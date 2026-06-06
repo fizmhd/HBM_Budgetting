@@ -71,6 +71,27 @@ public class TransactionServiceTests
     }
 
     [Fact]
+    public void Account_less_expense_is_valid()
+    {
+        // Income/expense may be recorded without an account ("cash") — TASK 4.1.
+        var result = _service.Validate(
+            new TransactionValidationInput(TransactionType.Expense, 100m, null, null,
+                new[] { new TransactionSplitValue(Category, 100m) }));
+        result.IsSuccess.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Transfer_without_a_source_account_is_rejected()
+    {
+        // A transfer is by definition a move between two accounts, so it can never be account-less.
+        var result = _service.Validate(
+            new TransactionValidationInput(TransactionType.Transfer, 100m, null, AccountB,
+                Array.Empty<TransactionSplitValue>()));
+        result.IsFailure.Should().BeTrue();
+        result.Errors[0].Code.Should().Be(TransactionService.TransferAccountsCode);
+    }
+
+    [Fact]
     public void Valid_transfer_between_two_accounts_is_valid()
     {
         var result = _service.Validate(

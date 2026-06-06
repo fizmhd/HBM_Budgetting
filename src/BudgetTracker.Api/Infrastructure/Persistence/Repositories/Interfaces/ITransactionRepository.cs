@@ -10,6 +10,10 @@ public sealed class TransactionListFilter
     public DateOnly? From { get; init; }
     public DateOnly? To { get; init; }
     public Guid? AccountId { get; init; }
+
+    /// <summary>When true, return only account-less ("cash") entries. Ignored if <see cref="AccountId"/> is set.</summary>
+    public bool NoAccount { get; init; }
+
     public Guid? CategoryId { get; init; }
     public TransactionType? Type { get; init; }
     public string? Tag { get; init; }

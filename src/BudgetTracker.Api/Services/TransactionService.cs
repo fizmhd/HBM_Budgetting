@@ -37,7 +37,10 @@ public sealed class TransactionService : ITransactionService
                 "Transfers move money between accounts and cannot have category splits."));
         }
 
-        if (input.CounterAccountId is null || input.CounterAccountId == input.AccountId)
+        // A transfer is an account-to-account move, so unlike income/expense it can never be
+        // account-less: both the source and a distinct destination are required (TASK 4.3).
+        if (input.AccountId is null || input.CounterAccountId is null ||
+            input.CounterAccountId == input.AccountId)
         {
             return Result.Failure(Error.Validation(TransferAccountsCode,
                 "A transfer must go between two different accounts."));

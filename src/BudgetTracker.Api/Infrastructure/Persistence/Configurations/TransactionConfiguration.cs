@@ -15,8 +15,9 @@ public class TransactionConfiguration : IEntityTypeConfiguration<Transaction>
 
         builder.HasKey(t => t.Id);
 
-        builder.Property(t => t.AccountId)
-            .IsRequired();
+        // Nullable: account-less ("cash") income/expense have no account (TASK 4.1). Transfers always
+        // set it, but that rule is enforced in the service layer rather than the schema.
+        builder.Property(t => t.AccountId);
 
         builder.Property(t => t.Date)
             .IsRequired();
