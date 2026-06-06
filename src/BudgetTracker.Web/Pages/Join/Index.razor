@@ -1,0 +1,54 @@
+@page "/join/{Token}"
+@using BudgetTracker.Web.Services
+@using BudgetTracker.Web.Services.ErrorHandling
+@using BudgetTracker.Web.Components.Shared
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@inject IApiClient ApiClient
+@inject NavigationManager Navigation
+@inject ApiErrorHandler ErrorHandler
+
+<PageTitle>Join Household - Budget Tracker</PageTitle>
+
+<div class="container py-5" style="max-width: 32rem;">
+    <div class="card shadow-sm">
+        <div class="card-body text-center">
+            <h1 class="h4 mb-3">Join Household</h1>
+
+            @if (_isWorking)
+            {
+                <LoadingSpinner />
+                <p class="text-muted mt-2">Accepting your invite…</p>
+            }
+            else if (!string.IsNullOrEmpty(_errorMessage))
+            {
+                <ErrorAlert Message="@_errorMessage" />
+                <a href="/" class="btn btn-outline-secondary mt-2">Go home</a>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public string Token { get; set; } = string.Empty;
+
+    private bool _isWorking = true;
+    private string? _errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            await ApiClient.AcceptInviteAsync(Token);
+            Navigation.NavigateTo("/household", forceLoad: true);
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ErrorHandler.Handle(ex, "Failed to accept invite").UserMessage;
+        }
+        finally
+        {
+            _isWorking = false;
+        }
+    }
+}

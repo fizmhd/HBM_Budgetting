@@ -16,6 +16,15 @@ public class AppDbContext : DbContext
     public DbSet<User> Users => Set<User>();
     public DbSet<UserExternalLogin> UserExternalLogins => Set<UserExternalLogin>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
+    public DbSet<Household> Households => Set<Household>();
+    public DbSet<HouseholdMember> HouseholdMembers => Set<HouseholdMember>();
+    public DbSet<HouseholdInvite> HouseholdInvites => Set<HouseholdInvite>();
+    public DbSet<Account> Accounts => Set<Account>();
+    public DbSet<Category> Categories => Set<Category>();
+    public DbSet<Transaction> Transactions => Set<Transaction>();
+    public DbSet<TransactionSplit> TransactionSplits => Set<TransactionSplit>();
+    public DbSet<Tag> Tags => Set<Tag>();
+    public DbSet<TransactionTag> TransactionTags => Set<TransactionTag>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

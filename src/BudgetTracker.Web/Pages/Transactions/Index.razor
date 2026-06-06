@@ -1,0 +1,633 @@
+@page "/transactions"
+@using BudgetTracker.Shared.DTOs.Accounts
+@using BudgetTracker.Shared.DTOs.Categories
+@using BudgetTracker.Shared.DTOs.Transactions
+@using BudgetTracker.Web.Services
+@using BudgetTracker.Web.Services.ErrorHandling
+@using BudgetTracker.Web.Components.Shared
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@inject IApiClient ApiClient
+@inject ApiErrorHandler ErrorHandler
+
+<PageTitle>Transactions - Budget Tracker</PageTitle>
+
+<div class="container py-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1 class="h3 mb-0">Transactions</h1>
+        <button class="btn btn-primary" @onclick="OpenCreate" disabled="@(_accounts.Count == 0)">
+            <i class="bi bi-plus-lg me-1"></i> Add transaction
+        </button>
+    </div>
+
+    @if (_accounts.Count == 0 && !_isLoading)
+    {
+        <div class="alert alert-info">Add an account first before recording transactions.</div>
+    }
+
+    <!-- Filter bar + month quick-nav -->
+    <div class="card shadow-sm mb-3">
+        <div class="card-body">
+            <div class="d-flex align-items-center mb-3">
+                <button class="btn btn-outline-secondary btn-sm" @onclick="() => ShiftMonth(-1)" title="Previous month">
+                    <i class="bi bi-chevron-left"></i>
+                </button>
+                <span class="mx-3 fw-semibold">@_monthLabel</span>
+                <button class="btn btn-outline-secondary btn-sm" @onclick="() => ShiftMonth(1)" title="Next month">
+                    <i class="bi bi-chevron-right"></i>
+                </button>
+                <button class="btn btn-link btn-sm ms-2" @onclick="ClearMonth">All dates</button>
+            </div>
+
+            <div class="row g-2">
+                <div class="col-md-3">
+                    <select class="form-select form-select-sm" @bind="_filter.AccountId">
+                        <option value="">All accounts</option>
+                        @foreach (var a in _accounts)
+                        {
+                            <option value="@a.Id">@a.Name</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <CategoryPicker Tree="_tree" @bind-SelectedCategoryId="_filter.CategoryId"
+                                    AllowClear="true" ClearLabel="All categories" CssClass="form-select-sm" />
+                </div>
+                <div class="col-md-2">
+                    <select class="form-select form-select-sm" @bind="_filter.Type">
+                        <option value="">All types</option>
+                        <option value="Income">Income</option>
+                        <option value="Expense">Expense</option>
+                        <option value="Transfer">Transfer</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <input class="form-control form-control-sm" placeholder="Tag" @bind="_filter.Tag" />
+                </div>
+                <div class="col-md-2">
+                    <input class="form-control form-control-sm" placeholder="Search…" @bind="_filter.Search" />
+                </div>
+            </div>
+            <div class="d-flex justify-content-between mt-2">
+                <div>
+                    <label class="form-label small mb-0 me-1">Sort</label>
+                    <select class="form-select form-select-sm d-inline-block w-auto" @bind="_filter.Sort">
+                        <option value="date">Date (newest)</option>
+                        <option value="amount">Amount</option>
+                    </select>
+                </div>
+                <div>
+                    <button class="btn btn-sm btn-outline-secondary me-1" @onclick="ResetFilters">Reset</button>
+                    <button class="btn btn-sm btn-primary" @onclick="ApplyFilters">Apply</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (_isLoading)
+    {
+        <LoadingSpinner />
+    }
+    else if (!string.IsNullOrEmpty(_errorMessage))
+    {
+        <ErrorAlert Message="@_errorMessage" />
+    }
+    else if (_items.Count == 0)
+    {
+        <div class="alert alert-info">No transactions match these filters.</div>
+    }
+    else
+    {
+        <div class="card shadow-sm">
+            <div class="table-responsive">
+                <table class="table align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Account</th>
+                            <th>Category</th>
+                            <th>Description</th>
+                            <th class="text-end">Amount</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var t in _items)
+                        {
+                            <tr>
+                                <td>@t.Date.ToString("yyyy-MM-dd")</td>
+                                <td>
+                                    @t.AccountName
+                                    @if (t.Type == "Transfer")
+                                    {
+                                        <i class="bi bi-arrow-right mx-1"></i> @t.CounterAccountName
+                                    }
+                                </td>
+                                <td>@CategoryLabel(t)</td>
+                                <td>
+                                    @t.Description
+                                    @foreach (var tag in t.Tags)
+                                    {
+                                        <span class="badge bg-light text-dark border ms-1">@tag</span>
+                                    }
+                                </td>
+                                <td class="text-end @AmountClass(t.Type)">@AmountLabel(t)</td>
+                                <td class="text-end">
+                                    <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => OpenEdit(t)" disabled="@_isWorking">Edit</button>
+                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => Delete(t)" disabled="@_isWorking">Delete</button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Paging -->
+        <div class="d-flex justify-content-between align-items-center mt-2">
+            <small class="text-muted">@_total transaction(s)</small>
+            <div class="btn-group btn-group-sm">
+                <button class="btn btn-outline-secondary" @onclick="() => GoToPage(_filter.Page - 1)" disabled="@(_filter.Page <= 1)">Prev</button>
+                <span class="btn btn-outline-secondary disabled">Page @_filter.Page / @Math.Max(1, _totalPages)</span>
+                <button class="btn btn-outline-secondary" @onclick="() => GoToPage(_filter.Page + 1)" disabled="@(_filter.Page >= _totalPages)">Next</button>
+            </div>
+        </div>
+    }
+</div>
+
+@if (_showModal)
+{
+    <div class="modal fade show d-block" tabindex="-1" role="dialog">
+        <div class="modal-dialog modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">@(_isEdit ? "Edit transaction" : "Add transaction")</h5>
+                    <button type="button" class="btn-close" @onclick="CloseModal"></button>
+                </div>
+                <div class="modal-body">
+                    @if (!string.IsNullOrEmpty(_modalError))
+                    {
+                        <div class="alert alert-danger">@_modalError</div>
+                    }
+
+                    <!-- Type toggle -->
+                    <div class="btn-group w-100 mb-3" role="group">
+                        @foreach (var type in new[] { "Expense", "Income", "Transfer" })
+                        {
+                            <input type="radio" class="btn-check" name="txnType" id="type-@type"
+                                   checked="@(_form.Type == type)" @onchange="() => SetType(type)" />
+                            <label class="btn btn-outline-primary" for="type-@type">@type</label>
+                        }
+                    </div>
+
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-4">
+                            <label class="form-label">@(_form.Type == "Transfer" ? "From account" : "Account")</label>
+                            <select class="form-select" @bind="_form.AccountId">
+                                @foreach (var a in _accounts)
+                                {
+                                    <option value="@a.Id">@a.Name (@a.CurrencyCode)</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Date</label>
+                            <input type="date" class="form-control" @bind="_form.Date" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Amount</label>
+                            <input type="number" step="0.01" class="form-control" @bind="_form.Amount" />
+                        </div>
+                    </div>
+
+                    @if (_form.Type == "Transfer")
+                    {
+                        <div class="mb-3">
+                            <label class="form-label">To account</label>
+                            <select class="form-select" @bind="_form.CounterAccountId">
+                                <option value="">Select destination…</option>
+                                @foreach (var a in _accounts.Where(a => a.Id != _form.AccountId))
+                                {
+                                    <option value="@a.Id">@a.Name (@a.CurrencyCode)</option>
+                                }
+                            </select>
+                        </div>
+                    }
+                    else
+                    {
+                        <!-- Multi-category split UI -->
+                        <label class="form-label">Categories</label>
+                        @foreach (var split in _form.Splits)
+                        {
+                            <div class="row g-2 mb-2 align-items-center">
+                                <div class="col-md-6">
+                                    <CategoryPicker Tree="_tree" SelectedCategoryId="split.CategoryId"
+                                                    SelectedCategoryIdChanged="v => split.CategoryId = v" />
+                                </div>
+                                <div class="col-md-4">
+                                    <input type="number" step="0.01" class="form-control" placeholder="Amount"
+                                           value="@split.Amount" @onchange="e => OnSplitAmountChanged(split, e)" />
+                                </div>
+                                <div class="col-md-2">
+                                    <button class="btn btn-outline-danger w-100" @onclick="() => RemoveSplit(split)"
+                                            disabled="@(_form.Splits.Count <= 1)">
+                                        <i class="bi bi-x"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        }
+                        <button class="btn btn-sm btn-outline-secondary mb-2" @onclick="AddSplit">
+                            <i class="bi bi-plus"></i> Add split
+                        </button>
+
+                        <div class="alert @(_splitsBalanced ? "alert-success" : "alert-warning") py-1 px-2 small mb-3">
+                            Allocated @_splitSum.ToString("N2") of @_form.Amount.ToString("N2")
+                            @if (!_splitsBalanced)
+                            {
+                                <span>— remaining @((_form.Amount - _splitSum).ToString("N2"))</span>
+                            }
+                        </div>
+                    }
+
+                    <div class="mb-3">
+                        <label class="form-label">Description</label>
+                        <input class="form-control" @bind="_form.Description" />
+                    </div>
+
+                    <div class="row g-2">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Tags (comma separated)</label>
+                            <input class="form-control" @bind="_form.TagsText" placeholder="e.g. vacation, reimbursable" />
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Notes</label>
+                            <input class="form-control" @bind="_form.Notes" />
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CloseModal" disabled="@_isWorking">Cancel</button>
+                    <button type="button" class="btn btn-primary" @onclick="Save" disabled="@(_isWorking || !CanSubmit)">
+                        @if (_isWorking)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        Save
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+@code {
+    private sealed class SplitForm
+    {
+        public Guid? CategoryId { get; set; }
+        public decimal Amount { get; set; }
+    }
+
+    private sealed class TxnForm
+    {
+        public Guid? Id { get; set; }
+        public string Type { get; set; } = "Expense";
+        public Guid AccountId { get; set; }
+        public Guid? CounterAccountId { get; set; }
+        public DateTime Date { get; set; } = DateTime.Today;
+        public decimal Amount { get; set; }
+        public string? Description { get; set; }
+        public string? Notes { get; set; }
+        public string? TagsText { get; set; }
+        public List<SplitForm> Splits { get; set; } = new() { new SplitForm() };
+        public bool IsShared { get; set; }
+    }
+
+    private sealed class FilterState
+    {
+        public Guid? AccountId { get; set; }
+        public Guid? CategoryId { get; set; }
+        public string? Type { get; set; }
+        public string? Tag { get; set; }
+        public string? Search { get; set; }
+        public string Sort { get; set; } = "date";
+        public DateOnly? From { get; set; }
+        public DateOnly? To { get; set; }
+        public int Page { get; set; } = 1;
+    }
+
+    private List<AccountDto> _accounts = new();
+    private List<CategoryTreeNodeDto> _tree = new();
+    private List<TransactionDto> _items = new();
+    private int _total;
+    private int _totalPages;
+
+    private bool _isLoading = true;
+    private bool _isWorking;
+    private string? _errorMessage;
+
+    private FilterState _filter = new();
+    private DateTime? _month = DateTime.Today;
+    private string _monthLabel => _month is { } m ? m.ToString("MMMM yyyy") : "All dates";
+
+    private bool _showModal;
+    private bool _isEdit;
+    private string? _modalError;
+    private TxnForm _form = new();
+
+    private decimal _splitSum => _form.Splits.Sum(s => s.Amount);
+    private bool _splitsBalanced => _form.Type == "Transfer" || _splitSum == _form.Amount;
+
+    private bool CanSubmit
+    {
+        get
+        {
+            if (_form.Amount <= 0 || _form.AccountId == Guid.Empty) return false;
+            if (_form.Type == "Transfer")
+            {
+                return _form.CounterAccountId is { } c && c != _form.AccountId;
+            }
+            return _splitsBalanced && _form.Splits.All(s => s.CategoryId is not null && s.Amount > 0);
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        SetMonthRange();
+        await LoadReferenceDataAsync();
+        await LoadAsync();
+    }
+
+    private async Task LoadReferenceDataAsync()
+    {
+        try
+        {
+            _accounts = await ApiClient.GetAccountsAsync() ?? new();
+            _accounts = _accounts.Where(a => !a.IsArchived).ToList();
+            _tree = await ApiClient.GetCategoryTreeAsync() ?? new();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ErrorHandler.Handle(ex, "Failed to load accounts/categories").UserMessage;
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        _isLoading = true;
+        _errorMessage = null;
+        try
+        {
+            var query = new TransactionQuery
+            {
+                From = _filter.From?.ToString("yyyy-MM-dd"),
+                To = _filter.To?.ToString("yyyy-MM-dd"),
+                AccountId = _filter.AccountId,
+                CategoryId = _filter.CategoryId,
+                Type = string.IsNullOrEmpty(_filter.Type) ? null : _filter.Type,
+                Tag = string.IsNullOrWhiteSpace(_filter.Tag) ? null : _filter.Tag,
+                Search = string.IsNullOrWhiteSpace(_filter.Search) ? null : _filter.Search,
+                Sort = _filter.Sort,
+                Page = _filter.Page,
+                PageSize = 25
+            };
+            var response = await ApiClient.GetTransactionsAsync(query);
+            _items = response?.Items ?? new();
+            _total = response?.TotalCount ?? 0;
+            _totalPages = response?.TotalPages ?? 0;
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ErrorHandler.Handle(ex, "Failed to load transactions").UserMessage;
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private void SetMonthRange()
+    {
+        if (_month is { } m)
+        {
+            _filter.From = DateOnly.FromDateTime(new DateTime(m.Year, m.Month, 1));
+            _filter.To = _filter.From.Value.AddMonths(1).AddDays(-1);
+        }
+        else
+        {
+            _filter.From = null;
+            _filter.To = null;
+        }
+    }
+
+    private async Task ShiftMonth(int delta)
+    {
+        _month = (_month ?? DateTime.Today).AddMonths(delta);
+        SetMonthRange();
+        _filter.Page = 1;
+        await LoadAsync();
+    }
+
+    private async Task ClearMonth()
+    {
+        _month = null;
+        SetMonthRange();
+        _filter.Page = 1;
+        await LoadAsync();
+    }
+
+    private async Task ApplyFilters()
+    {
+        _filter.Page = 1;
+        await LoadAsync();
+    }
+
+    private async Task ResetFilters()
+    {
+        _filter = new FilterState();
+        _month = DateTime.Today;
+        SetMonthRange();
+        await LoadAsync();
+    }
+
+    private async Task GoToPage(int page)
+    {
+        if (page < 1 || page > _totalPages) return;
+        _filter.Page = page;
+        await LoadAsync();
+    }
+
+    private void OpenCreate()
+    {
+        _isEdit = false;
+        _modalError = null;
+        _form = new TxnForm
+        {
+            AccountId = _accounts.FirstOrDefault()?.Id ?? Guid.Empty,
+            Date = DateTime.Today
+        };
+        _showModal = true;
+    }
+
+    private void OpenEdit(TransactionDto t)
+    {
+        _isEdit = true;
+        _modalError = null;
+        _form = new TxnForm
+        {
+            Id = t.Id,
+            Type = t.Type,
+            AccountId = t.AccountId,
+            CounterAccountId = t.CounterAccountId,
+            Date = t.Date.ToDateTime(TimeOnly.MinValue),
+            Amount = t.Amount,
+            Description = t.Description,
+            Notes = t.Notes,
+            TagsText = string.Join(", ", t.Tags),
+            IsShared = t.IsShared,
+            Splits = t.Splits.Count > 0
+                ? t.Splits.Select(s => new SplitForm { CategoryId = s.CategoryId, Amount = s.Amount }).ToList()
+                : new List<SplitForm> { new SplitForm() }
+        };
+        _showModal = true;
+    }
+
+    private void CloseModal() => _showModal = false;
+
+    private void SetType(string type)
+    {
+        _form.Type = type;
+        if (type == "Transfer")
+        {
+            _form.Splits = new List<SplitForm> { new SplitForm() };
+        }
+        else
+        {
+            _form.CounterAccountId = null;
+            if (_form.Splits.Count == 0) _form.Splits.Add(new SplitForm());
+        }
+    }
+
+    private void AddSplit() => _form.Splits.Add(new SplitForm());
+
+    private void RemoveSplit(SplitForm split)
+    {
+        if (_form.Splits.Count > 1) _form.Splits.Remove(split);
+    }
+
+    private void OnSplitAmountChanged(SplitForm split, ChangeEventArgs e)
+    {
+        split.Amount = decimal.TryParse(e.Value?.ToString(), out var v) ? v : 0m;
+    }
+
+    private async Task Save()
+    {
+        if (!CanSubmit)
+        {
+            _modalError = "Please complete the form. Split amounts must add up to the total.";
+            return;
+        }
+
+        _isWorking = true;
+        _modalError = null;
+        try
+        {
+            var tags = (_form.TagsText ?? string.Empty)
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Distinct()
+                .ToList();
+
+            var request = new CreateTransactionRequest
+            {
+                Type = _form.Type,
+                AccountId = _form.AccountId,
+                CounterAccountId = _form.Type == "Transfer" ? _form.CounterAccountId : null,
+                Date = DateOnly.FromDateTime(_form.Date),
+                Amount = _form.Amount,
+                Description = _form.Description,
+                Notes = _form.Notes,
+                Tags = tags,
+                IsShared = _form.IsShared,
+                Splits = _form.Type == "Transfer"
+                    ? new List<TransactionSplitInput>()
+                    : _form.Splits.Select(s => new TransactionSplitInput
+                    {
+                        CategoryId = s.CategoryId!.Value,
+                        Amount = s.Amount
+                    }).ToList()
+            };
+
+            if (_isEdit && _form.Id.HasValue)
+            {
+                await ApiClient.UpdateTransactionAsync(_form.Id.Value, new UpdateTransactionRequest
+                {
+                    Type = request.Type,
+                    AccountId = request.AccountId,
+                    CounterAccountId = request.CounterAccountId,
+                    Date = request.Date,
+                    Amount = request.Amount,
+                    Description = request.Description,
+                    Notes = request.Notes,
+                    Tags = request.Tags,
+                    IsShared = request.IsShared,
+                    Splits = request.Splits
+                });
+            }
+            else
+            {
+                await ApiClient.CreateTransactionAsync(request);
+            }
+
+            _showModal = false;
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _modalError = ErrorHandler.Handle(ex, "Failed to save transaction").UserMessage;
+        }
+        finally
+        {
+            _isWorking = false;
+        }
+    }
+
+    private async Task Delete(TransactionDto t)
+    {
+        _isWorking = true;
+        _errorMessage = null;
+        try
+        {
+            await ApiClient.DeleteTransactionAsync(t.Id);
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ErrorHandler.Handle(ex, "Failed to delete transaction").UserMessage;
+        }
+        finally
+        {
+            _isWorking = false;
+        }
+    }
+
+    private static string CategoryLabel(TransactionDto t)
+    {
+        if (t.Type == "Transfer") return "—";
+        if (t.Splits.Count == 0) return "";
+        if (t.Splits.Count == 1) return t.Splits[0].CategoryName ?? "";
+        return $"{t.Splits[0].CategoryName} +{t.Splits.Count - 1}";
+    }
+
+    private string AmountLabel(TransactionDto t)
+    {
+        var sign = t.Type switch { "Income" => "+", "Expense" => "−", _ => "" };
+        return $"{sign}{t.Amount:N2} {t.CurrencyCode}";
+    }
+
+    private static string AmountClass(string type) => type switch
+    {
+        "Income" => "text-success",
+        "Expense" => "text-danger",
+        _ => ""
+    };
+}

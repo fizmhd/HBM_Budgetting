@@ -3,6 +3,7 @@ using System;
 using BudgetTracker.Api.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace BudgetTracker.Api.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260604152422_AddHouseholds")]
+    partial class AddHouseholds
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -21,124 +24,6 @@ namespace BudgetTracker.Api.Infrastructure.Persistence.Migrations
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
-
-            modelBuilder.Entity("BudgetTracker.Api.Infrastructure.Persistence.Entities.Account", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<decimal?>("CreditLimit")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
-
-                    b.Property<string>("CurrencyCode")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(3)
-                        .HasColumnType("character varying(3)")
-                        .HasDefaultValue("SEK");
-
-                    b.Property<Guid?>("HouseholdId")
-                        .HasColumnType("uuid");
-
-                    b.Property<bool>("IsArchived")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(false);
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<decimal>("OpeningBalance")
-                        .ValueGeneratedOnAdd()
-                        .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)")
-                        .HasDefaultValue(0m);
-
-                    b.Property<Guid>("OwnerUserId")
-                        .HasColumnType("uuid");
-
-                    b.Property<int>("Type")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("Visibility")
-                        .HasColumnType("integer");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("HouseholdId")
-                        .HasDatabaseName("IX_Accounts_HouseholdId");
-
-                    b.HasIndex("OwnerUserId")
-                        .HasDatabaseName("IX_Accounts_OwnerUserId");
-
-                    b.ToTable("Accounts", (string)null);
-                });
-
-            modelBuilder.Entity("BudgetTracker.Api.Infrastructure.Persistence.Entities.Category", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("HouseholdId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Icon")
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
-
-                    b.Property<bool>("IsSystem")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(false);
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<Guid>("OwnerUserId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid?>("ParentCategoryId")
-                        .HasColumnType("uuid");
-
-                    b.Property<int>("SortOrder")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(0);
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("Visibility")
-                        .HasColumnType("integer");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ParentCategoryId");
-
-                    b.HasIndex("HouseholdId", "ParentCategoryId")
-                        .HasDatabaseName("IX_Categories_HouseholdId_ParentCategoryId");
-
-                    b.HasIndex("OwnerUserId", "ParentCategoryId")
-                        .HasDatabaseName("IX_Categories_OwnerUserId_ParentCategoryId");
-
-                    b.ToTable("Categories", (string)null);
-                });
 
             modelBuilder.Entity("BudgetTracker.Api.Infrastructure.Persistence.Entities.Household", b =>
                 {
@@ -311,169 +196,6 @@ namespace BudgetTracker.Api.Infrastructure.Persistence.Migrations
                     b.ToTable("RefreshTokens", (string)null);
                 });
 
-            modelBuilder.Entity("BudgetTracker.Api.Infrastructure.Persistence.Entities.Tag", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("HouseholdId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
-
-                    b.Property<Guid>("OwnerUserId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("Visibility")
-                        .HasColumnType("integer");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("HouseholdId")
-                        .HasDatabaseName("IX_Tags_HouseholdId");
-
-                    b.HasIndex("OwnerUserId", "Name")
-                        .IsUnique()
-                        .HasDatabaseName("IX_Tags_OwnerUserId_Name");
-
-                    b.ToTable("Tags", (string)null);
-                });
-
-            modelBuilder.Entity("BudgetTracker.Api.Infrastructure.Persistence.Entities.Transaction", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("AccountId")
-                        .HasColumnType("uuid");
-
-                    b.Property<decimal>("Amount")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
-
-                    b.Property<Guid?>("CounterAccountId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("CurrencyCode")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(3)
-                        .HasColumnType("character varying(3)")
-                        .HasDefaultValue("SEK");
-
-                    b.Property<DateOnly>("Date")
-                        .HasColumnType("date");
-
-                    b.Property<string>("Description")
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
-
-                    b.Property<Guid?>("HouseholdId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Notes")
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)");
-
-                    b.Property<Guid>("OwnerUserId")
-                        .HasColumnType("uuid");
-
-                    b.Property<int>("Type")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("Visibility")
-                        .HasColumnType("integer");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("AccountId")
-                        .HasDatabaseName("IX_Transactions_AccountId");
-
-                    b.HasIndex("CounterAccountId")
-                        .HasDatabaseName("IX_Transactions_CounterAccountId");
-
-                    b.HasIndex("Date")
-                        .HasDatabaseName("IX_Transactions_Date");
-
-                    b.HasIndex("HouseholdId")
-                        .HasDatabaseName("IX_Transactions_HouseholdId");
-
-                    b.HasIndex("OwnerUserId")
-                        .HasDatabaseName("IX_Transactions_OwnerUserId");
-
-                    b.ToTable("Transactions", (string)null);
-                });
-
-            modelBuilder.Entity("BudgetTracker.Api.Infrastructure.Persistence.Entities.TransactionSplit", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<decimal>("Amount")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
-
-                    b.Property<Guid>("CategoryId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Note")
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
-
-                    b.Property<Guid>("TransactionId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CategoryId")
-                        .HasDatabaseName("IX_TransactionSplits_CategoryId");
-
-                    b.HasIndex("TransactionId")
-                        .HasDatabaseName("IX_TransactionSplits_TransactionId");
-
-                    b.ToTable("TransactionSplits", (string)null);
-                });
-
-            modelBuilder.Entity("BudgetTracker.Api.Infrastructure.Persistence.Entities.TransactionTag", b =>
-                {
-                    b.Property<Guid>("TransactionId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("TagId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("TransactionId", "TagId");
-
-                    b.HasIndex("TagId")
-                        .HasDatabaseName("IX_TransactionTags_TagId");
-
-                    b.ToTable("TransactionTags", (string)null);
-                });
-
             modelBuilder.Entity("BudgetTracker.Api.Infrastructure.Persistence.Entities.User", b =>
                 {
                     b.Property<Guid>("Id")
@@ -610,14 +332,6 @@ namespace BudgetTracker.Api.Infrastructure.Persistence.Migrations
                     b.ToTable("UserExternalLogins", (string)null);
                 });
 
-            modelBuilder.Entity("BudgetTracker.Api.Infrastructure.Persistence.Entities.Category", b =>
-                {
-                    b.HasOne("BudgetTracker.Api.Infrastructure.Persistence.Entities.Category", null)
-                        .WithMany()
-                        .HasForeignKey("ParentCategoryId")
-                        .OnDelete(DeleteBehavior.Restrict);
-                });
-
             modelBuilder.Entity("BudgetTracker.Api.Infrastructure.Persistence.Entities.HouseholdInvite", b =>
                 {
                     b.HasOne("BudgetTracker.Api.Infrastructure.Persistence.Entities.Household", "Household")
@@ -658,32 +372,6 @@ namespace BudgetTracker.Api.Infrastructure.Persistence.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("BudgetTracker.Api.Infrastructure.Persistence.Entities.TransactionSplit", b =>
-                {
-                    b.HasOne("BudgetTracker.Api.Infrastructure.Persistence.Entities.Transaction", null)
-                        .WithMany("Splits")
-                        .HasForeignKey("TransactionId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("BudgetTracker.Api.Infrastructure.Persistence.Entities.TransactionTag", b =>
-                {
-                    b.HasOne("BudgetTracker.Api.Infrastructure.Persistence.Entities.Tag", "Tag")
-                        .WithMany("TransactionTags")
-                        .HasForeignKey("TagId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("BudgetTracker.Api.Infrastructure.Persistence.Entities.Transaction", null)
-                        .WithMany("TransactionTags")
-                        .HasForeignKey("TransactionId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Tag");
-                });
-
             modelBuilder.Entity("BudgetTracker.Api.Infrastructure.Persistence.Entities.UserExternalLogin", b =>
                 {
                     b.HasOne("BudgetTracker.Api.Infrastructure.Persistence.Entities.User", "User")
@@ -700,18 +388,6 @@ namespace BudgetTracker.Api.Infrastructure.Persistence.Migrations
                     b.Navigation("Invites");
 
                     b.Navigation("Members");
-                });
-
-            modelBuilder.Entity("BudgetTracker.Api.Infrastructure.Persistence.Entities.Tag", b =>
-                {
-                    b.Navigation("TransactionTags");
-                });
-
-            modelBuilder.Entity("BudgetTracker.Api.Infrastructure.Persistence.Entities.Transaction", b =>
-                {
-                    b.Navigation("Splits");
-
-                    b.Navigation("TransactionTags");
                 });
 
             modelBuilder.Entity("BudgetTracker.Api.Infrastructure.Persistence.Entities.User", b =>

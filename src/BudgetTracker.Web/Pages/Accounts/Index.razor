@@ -1,0 +1,316 @@
+@page "/accounts"
+@using BudgetTracker.Shared.DTOs.Accounts
+@using BudgetTracker.Web.Services
+@using BudgetTracker.Web.Services.ErrorHandling
+@using BudgetTracker.Web.Components.Shared
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@inject IApiClient ApiClient
+@inject ApiErrorHandler ErrorHandler
+
+<PageTitle>Accounts - Budget Tracker</PageTitle>
+
+<div class="container py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="h3 mb-0">Accounts</h1>
+        <button class="btn btn-primary" @onclick="OpenCreate">
+            <i class="bi bi-plus-lg me-1"></i> Add account
+        </button>
+    </div>
+
+    @if (_isLoading)
+    {
+        <LoadingSpinner />
+    }
+    else if (!string.IsNullOrEmpty(_errorMessage))
+    {
+        <ErrorAlert Message="@_errorMessage" />
+    }
+    else if (_accounts.Count == 0)
+    {
+        <div class="alert alert-info">No accounts yet. Add your first account to get started.</div>
+    }
+    else
+    {
+        <div class="card shadow-sm">
+            <div class="table-responsive">
+                <table class="table align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Type</th>
+                            <th class="text-end">Balance</th>
+                            <th>Sharing</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var account in _accounts)
+                        {
+                            <tr class="@(account.IsArchived ? "text-muted" : "")">
+                                <td>
+                                    @account.Name
+                                    @if (account.IsArchived)
+                                    {
+                                        <span class="badge bg-light text-dark border ms-2">Archived</span>
+                                    }
+                                </td>
+                                <td>@FriendlyType(account.Type)</td>
+                                <td class="text-end">
+                                    @account.Balance.ToString("N2") @account.CurrencyCode
+                                    @if (account.Type == "CreditCard" && account.CreditLimit.HasValue)
+                                    {
+                                        <div><small class="text-muted">Limit @account.CreditLimit.Value.ToString("N2")</small></div>
+                                    }
+                                </td>
+                                <td>
+                                    @if (account.IsShared)
+                                    {
+                                        <span class="badge bg-success">Shared</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-secondary">Private</span>
+                                    }
+                                </td>
+                                <td class="text-end">
+                                    <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => OpenEdit(account)" disabled="@_isWorking">
+                                        Edit
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-warning" @onclick="() => ToggleArchive(account)" disabled="@_isWorking">
+                                        @(account.IsArchived ? "Unarchive" : "Archive")
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+</div>
+
+@if (_showModal)
+{
+    <div class="modal fade show d-block" tabindex="-1" role="dialog">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">@(_isEdit ? "Edit account" : "Add account")</h5>
+                    <button type="button" class="btn-close" @onclick="CloseModal"></button>
+                </div>
+                <div class="modal-body">
+                    @if (!string.IsNullOrEmpty(_modalError))
+                    {
+                        <div class="alert alert-danger">@_modalError</div>
+                    }
+
+                    <div class="mb-3">
+                        <label class="form-label" for="accName">Name</label>
+                        <input id="accName" class="form-control" @bind="_form.Name" />
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label" for="accType">Type</label>
+                        <select id="accType" class="form-select" @bind="_form.Type">
+                            <option value="Bank">Bank</option>
+                            <option value="Cash">Cash</option>
+                            <option value="CreditCard">Credit Card</option>
+                            <option value="Savings">Savings</option>
+                        </select>
+                    </div>
+
+                    @if (!_isEdit)
+                    {
+                        <div class="row">
+                            <div class="col mb-3">
+                                <label class="form-label" for="accCurrency">Currency</label>
+                                <select id="accCurrency" class="form-select" @bind="_form.CurrencyCode">
+                                    @foreach (var c in _currencies)
+                                    {
+                                        <option value="@c">@c</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="col mb-3">
+                                <label class="form-label" for="accOpening">Opening balance</label>
+                                <input id="accOpening" type="number" step="0.01" class="form-control" @bind="_form.OpeningBalance" />
+                            </div>
+                        </div>
+                    }
+
+                    @if (_form.Type == "CreditCard")
+                    {
+                        <div class="mb-3">
+                            <label class="form-label" for="accLimit">Credit limit</label>
+                            <input id="accLimit" type="number" step="0.01" class="form-control" @bind="_form.CreditLimit" />
+                        </div>
+                    }
+
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="accShared" @bind="_form.IsShared" />
+                        <label class="form-check-label" for="accShared">Share with my household</label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CloseModal" disabled="@_isWorking">Cancel</button>
+                    <button type="button" class="btn btn-primary" @onclick="Save" disabled="@_isWorking">
+                        @if (_isWorking)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        Save
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+@code {
+    private class AccountForm
+    {
+        public Guid? Id { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string Type { get; set; } = "Bank";
+        public string CurrencyCode { get; set; } = "SEK";
+        public decimal OpeningBalance { get; set; }
+        public decimal? CreditLimit { get; set; }
+        public bool IsShared { get; set; }
+    }
+
+    private readonly string[] _currencies = { "SEK", "USD", "EUR", "GBP", "NOK", "DKK", "INR" };
+
+    private List<AccountDto> _accounts = new();
+    private bool _isLoading = true;
+    private bool _isWorking;
+    private string? _errorMessage;
+
+    private bool _showModal;
+    private bool _isEdit;
+    private string? _modalError;
+    private AccountForm _form = new();
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _isLoading = true;
+        _errorMessage = null;
+        try
+        {
+            _accounts = await ApiClient.GetAccountsAsync() ?? new();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ErrorHandler.Handle(ex, "Failed to load accounts").UserMessage;
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private void OpenCreate()
+    {
+        _isEdit = false;
+        _modalError = null;
+        _form = new AccountForm();
+        _showModal = true;
+    }
+
+    private void OpenEdit(AccountDto account)
+    {
+        _isEdit = true;
+        _modalError = null;
+        _form = new AccountForm
+        {
+            Id = account.Id,
+            Name = account.Name,
+            Type = account.Type,
+            CurrencyCode = account.CurrencyCode,
+            OpeningBalance = account.OpeningBalance,
+            CreditLimit = account.CreditLimit,
+            IsShared = account.IsShared
+        };
+        _showModal = true;
+    }
+
+    private void CloseModal() => _showModal = false;
+
+    private async Task Save()
+    {
+        if (string.IsNullOrWhiteSpace(_form.Name))
+        {
+            _modalError = "Account name is required.";
+            return;
+        }
+
+        _isWorking = true;
+        _modalError = null;
+        try
+        {
+            var creditLimit = _form.Type == "CreditCard" ? _form.CreditLimit : null;
+
+            if (_isEdit && _form.Id.HasValue)
+            {
+                await ApiClient.UpdateAccountAsync(_form.Id.Value, new UpdateAccountRequest
+                {
+                    Name = _form.Name.Trim(),
+                    Type = _form.Type,
+                    CreditLimit = creditLimit,
+                    IsShared = _form.IsShared
+                });
+            }
+            else
+            {
+                await ApiClient.CreateAccountAsync(new CreateAccountRequest
+                {
+                    Name = _form.Name.Trim(),
+                    Type = _form.Type,
+                    CurrencyCode = _form.CurrencyCode,
+                    OpeningBalance = _form.OpeningBalance,
+                    CreditLimit = creditLimit,
+                    IsShared = _form.IsShared
+                });
+            }
+
+            _showModal = false;
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _modalError = ErrorHandler.Handle(ex, "Failed to save account").UserMessage;
+        }
+        finally
+        {
+            _isWorking = false;
+        }
+    }
+
+    private async Task ToggleArchive(AccountDto account)
+    {
+        _isWorking = true;
+        _errorMessage = null;
+        try
+        {
+            await ApiClient.ArchiveAccountAsync(account.Id);
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ErrorHandler.Handle(ex, "Failed to update account").UserMessage;
+        }
+        finally
+        {
+            _isWorking = false;
+        }
+    }
+
+    private static string FriendlyType(string type) => type switch
+    {
+        "CreditCard" => "Credit Card",
+        _ => type
+    };
+}

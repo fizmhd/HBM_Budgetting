@@ -1,4 +1,5 @@
 @page "/onboarding"
+@using BudgetTracker.Shared.DTOs.Households
 @using BudgetTracker.Shared.DTOs.Users
 @using BudgetTracker.Web.Services
 @using BudgetTracker.Web.Services.ErrorHandling
@@ -13,28 +14,78 @@
 
 <div class="auth-page">
     <div class="auth-card">
-        <h2>Welcome! Complete Your Profile</h2>
-        <p class="help-text">Please provide some basic information to get started.</p>
+        <h2>Welcome! Let's get you set up</h2>
+        <p class="help-text">A couple of quick steps and you're ready to start tracking.</p>
 
         @if (!string.IsNullOrEmpty(_errorMessage))
         {
             <ErrorAlert Message="@_errorMessage" />
         }
 
-        <EditForm Model="@_completeProfileRequest" OnValidSubmit="@HandleCompleteProfile">
+        <EditForm Model="@_model" OnValidSubmit="@HandleSubmit">
             <DataAnnotationsValidator />
-            <ValidationSummary />
 
             <div class="form-group">
                 <label for="firstName">First Name *</label>
-                <InputText id="firstName" @bind-Value="_completeProfileRequest.FirstName" class="form-control" placeholder="Enter your first name" />
-                <ValidationMessage For="@(() => _completeProfileRequest.FirstName)" />
+                <InputText id="firstName" @bind-Value="_model.FirstName" class="form-control" placeholder="Enter your first name" />
             </div>
 
             <div class="form-group">
                 <label for="lastName">Last Name *</label>
-                <InputText id="lastName" @bind-Value="_completeProfileRequest.LastName" class="form-control" placeholder="Enter your last name" />
-                <ValidationMessage For="@(() => _completeProfileRequest.LastName)" />
+                <InputText id="lastName" @bind-Value="_model.LastName" class="form-control" placeholder="Enter your last name" />
+            </div>
+
+            @if (_alreadyInHousehold)
+            {
+                <div class="alert alert-info">
+                    You're already part of the <strong>@_householdName</strong> household.
+                </div>
+            }
+            else
+            {
+                <hr />
+                <p class="help-text">Set up your household — finances stay private unless you choose to share them.</p>
+
+                <div class="form-group">
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="householdMode" id="modeCreate"
+                               checked="@(_model.Mode == HouseholdMode.Create)"
+                               @onchange="@(() => _model.Mode = HouseholdMode.Create)" />
+                        <label class="form-check-label" for="modeCreate">Create a new household</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="householdMode" id="modeJoin"
+                               checked="@(_model.Mode == HouseholdMode.Join)"
+                               @onchange="@(() => _model.Mode = HouseholdMode.Join)" />
+                        <label class="form-check-label" for="modeJoin">Join with an invite code</label>
+                    </div>
+                </div>
+
+                @if (_model.Mode == HouseholdMode.Create)
+                {
+                    <div class="form-group">
+                        <label for="householdName">Household Name *</label>
+                        <InputText id="householdName" @bind-Value="_model.HouseholdName" class="form-control" placeholder="e.g. Andersson family" />
+                    </div>
+                }
+                else
+                {
+                    <div class="form-group">
+                        <label for="inviteToken">Invite Code *</label>
+                        <InputText id="inviteToken" @bind-Value="_model.InviteToken" class="form-control" placeholder="Paste the invite code" />
+                    </div>
+                }
+            }
+
+            <div class="form-group">
+                <label for="currency">Base Currency</label>
+                <InputSelect id="currency" class="form-control form-select" @bind-Value="_model.Currency">
+                    @foreach (var c in _currencies)
+                    {
+                        <option value="@c">@c</option>
+                    }
+                </InputSelect>
+                <small class="text-muted">SEK is the default. You can change display preferences later in Settings.</small>
             </div>
 
             <div class="form-actions">
@@ -42,7 +93,7 @@
                     @if (_isLoading)
                     {
                         <LoadingSpinner />
-                        <span>Completing Setup...</span>
+                        <span>Finishing setup...</span>
                     }
                     else
                     {
@@ -54,42 +105,119 @@
     </div>
 </div>
 
-
-
 @code {
-    private CompleteProfileRequest _completeProfileRequest = new();
-    private bool _isLoading = false;
+    private enum HouseholdMode { Create, Join }
+
+    private class OnboardingModel
+    {
+        public string FirstName { get; set; } = string.Empty;
+        public string LastName { get; set; } = string.Empty;
+        public HouseholdMode Mode { get; set; } = HouseholdMode.Create;
+        public string HouseholdName { get; set; } = string.Empty;
+        public string InviteToken { get; set; } = string.Empty;
+        public string Currency { get; set; } = "SEK";
+    }
+
+    private readonly string[] _currencies = { "SEK", "USD", "EUR", "GBP", "NOK", "DKK", "INR" };
+
+    private OnboardingModel _model = new();
+    private bool _isLoading;
+    private bool _alreadyInHousehold;
+    private string? _householdName;
     private string? _errorMessage;
 
-    private async Task HandleCompleteProfile()
+    protected override async Task OnInitializedAsync()
     {
-        _isLoading = true;
-        _errorMessage = null;
-
+        // Pre-fill the name if the profile already has it, and detect an existing household
+        // so re-entering onboarding is handled gracefully.
         try
         {
-            var result = await ApiClient.CompleteProfileAsync(_completeProfileRequest);
-
-            if (result != null)
+            var profile = await ApiClient.GetProfileAsync();
+            if (profile is not null)
             {
-                // Refresh authentication state
-                if (AuthStateProvider is BudgetTracker.Web.Auth.AuthStateProvider provider)
+                _model.FirstName = profile.FirstName ?? string.Empty;
+                _model.LastName = profile.LastName ?? string.Empty;
+                _model.Currency = string.IsNullOrEmpty(profile.PreferredCurrency) ? "SEK" : profile.PreferredCurrency;
+            }
+
+            var household = await ApiClient.GetCurrentHouseholdAsync();
+            if (household is not null)
+            {
+                _alreadyInHousehold = true;
+                _householdName = household.Name;
+            }
+        }
+        catch (Refit.ApiException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            // No household yet — expected for a new user.
+        }
+        catch
+        {
+            // Non-fatal: fall back to a blank form.
+        }
+    }
+
+    private async Task HandleSubmit()
+    {
+        _errorMessage = null;
+
+        if (string.IsNullOrWhiteSpace(_model.FirstName) || string.IsNullOrWhiteSpace(_model.LastName))
+        {
+            _errorMessage = "First and last name are required.";
+            return;
+        }
+
+        if (!_alreadyInHousehold)
+        {
+            if (_model.Mode == HouseholdMode.Create && string.IsNullOrWhiteSpace(_model.HouseholdName))
+            {
+                _errorMessage = "Please enter a household name.";
+                return;
+            }
+            if (_model.Mode == HouseholdMode.Join && string.IsNullOrWhiteSpace(_model.InviteToken))
+            {
+                _errorMessage = "Please enter your invite code.";
+                return;
+            }
+        }
+
+        _isLoading = true;
+        try
+        {
+            // 1) Establish the household first, so the profile is only marked complete once a
+            //    household exists.
+            if (!_alreadyInHousehold)
+            {
+                if (_model.Mode == HouseholdMode.Create)
                 {
-                    provider.NotifyAuthenticationStateChanged();
+                    await ApiClient.CreateHouseholdAsync(new CreateHouseholdRequest { Name = _model.HouseholdName.Trim() });
                 }
+                else
+                {
+                    await ApiClient.AcceptInviteAsync(_model.InviteToken.Trim());
+                }
+            }
 
-                // Navigate to home
-                Navigation.NavigateTo("/", forceLoad: true);
-            }
-            else
+            // 2) Save the preferred currency.
+            await ApiClient.UpdateSettingsAsync(new UpdateSettingsRequest { PreferredCurrency = _model.Currency });
+
+            // 3) Mark the profile complete (sets the onboarding gate).
+            await ApiClient.CompleteProfileAsync(new CompleteProfileRequest
             {
-                _errorMessage = "Failed to complete profile. Please try again.";
+                FirstName = _model.FirstName.Trim(),
+                LastName = _model.LastName.Trim()
+            });
+
+            if (AuthStateProvider is BudgetTracker.Web.Auth.AuthStateProvider provider)
+            {
+                provider.NotifyAuthenticationStateChanged();
             }
+
+            Navigation.NavigateTo("/", forceLoad: true);
         }
         catch (Exception ex)
         {
-            var result = ErrorHandler.Handle(ex, "Profile completion failed");
-            _errorMessage = result.UserMessage;
+            _errorMessage = ErrorHandler.Handle(ex, "Onboarding failed").UserMessage;
         }
         finally
         {

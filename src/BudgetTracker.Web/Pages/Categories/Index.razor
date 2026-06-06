@@ -1,0 +1,347 @@
+@page "/categories"
+@using BudgetTracker.Shared.DTOs.Categories
+@using BudgetTracker.Web.Services
+@using BudgetTracker.Web.Services.ErrorHandling
+@using BudgetTracker.Web.Components.Shared
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@inject IApiClient ApiClient
+@inject ApiErrorHandler ErrorHandler
+
+<PageTitle>Categories - Budget Tracker</PageTitle>
+
+<div class="container py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="h3 mb-0">Categories</h1>
+        <div>
+            <button class="btn btn-primary" @onclick="() => OpenCreate(null)" disabled="@_isWorking">
+                <i class="bi bi-plus-lg me-1"></i> Add category
+            </button>
+        </div>
+    </div>
+
+    @if (_isLoading)
+    {
+        <LoadingSpinner />
+    }
+    else if (!string.IsNullOrEmpty(_errorMessage))
+    {
+        <ErrorAlert Message="@_errorMessage" />
+    }
+    else if (_tree.Count == 0)
+    {
+        <div class="card shadow-sm">
+            <div class="card-body text-center py-5">
+                <p class="text-muted mb-3">You don't have any categories yet.</p>
+                <button class="btn btn-outline-primary" @onclick="SeedDefaults" disabled="@_isWorking">
+                    @if (_isWorking)
+                    {
+                        <span class="spinner-border spinner-border-sm me-1"></span>
+                    }
+                    Import default categories
+                </button>
+            </div>
+        </div>
+    }
+    else
+    {
+        @if (!string.IsNullOrEmpty(_actionError))
+        {
+            <div class="alert alert-warning alert-dismissible">
+                @_actionError
+                <button type="button" class="btn-close" @onclick="() => _actionError = null"></button>
+            </div>
+        }
+        <div class="card shadow-sm">
+            <ul class="list-group list-group-flush">
+                @foreach (var node in _tree)
+                {
+                    @RenderNode(node, 0)
+                }
+            </ul>
+        </div>
+    }
+</div>
+
+@if (_showModal)
+{
+    <div class="modal fade show d-block" tabindex="-1" role="dialog">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">@(_isEdit ? "Edit category" : "Add category")</h5>
+                    <button type="button" class="btn-close" @onclick="CloseModal"></button>
+                </div>
+                <div class="modal-body">
+                    @if (!string.IsNullOrEmpty(_modalError))
+                    {
+                        <div class="alert alert-danger">@_modalError</div>
+                    }
+
+                    <div class="mb-3">
+                        <label class="form-label" for="catName">Name</label>
+                        <input id="catName" class="form-control" @bind="_form.Name" />
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label" for="catParent">Parent</label>
+                        <select id="catParent" class="form-select" @bind="_form.ParentCategoryId">
+                            <option value="">(Top level)</option>
+                            @foreach (var row in _flat.Where(r => r.Id != _form.Id))
+                            {
+                                <option value="@row.Id">@(new string(' ', row.Depth * 3))@row.Name</option>
+                            }
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label" for="catIcon">Icon (optional)</label>
+                        <input id="catIcon" class="form-control" @bind="_form.Icon" placeholder="e.g. bi-house" />
+                    </div>
+
+                    @if (!_isEdit)
+                    {
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="catShared" @bind="_form.IsShared" />
+                            <label class="form-check-label" for="catShared">Share with my household</label>
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CloseModal" disabled="@_isWorking">Cancel</button>
+                    <button type="button" class="btn btn-primary" @onclick="Save" disabled="@_isWorking">
+                        @if (_isWorking)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        Save
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+@code {
+    private sealed class CategoryForm
+    {
+        public Guid? Id { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public Guid? ParentCategoryId { get; set; }
+        public Guid? OriginalParentId { get; set; }
+        public string? Icon { get; set; }
+        public int SortOrder { get; set; }
+        public bool IsShared { get; set; }
+    }
+
+    private sealed record FlatRow(Guid Id, string Name, int Depth);
+
+    private List<CategoryTreeNodeDto> _tree = new();
+    private readonly List<FlatRow> _flat = new();
+
+    private bool _isLoading = true;
+    private bool _isWorking;
+    private string? _errorMessage;
+    private string? _actionError;
+
+    private bool _showModal;
+    private bool _isEdit;
+    private string? _modalError;
+    private CategoryForm _form = new();
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _isLoading = true;
+        _errorMessage = null;
+        try
+        {
+            _tree = await ApiClient.GetCategoryTreeAsync() ?? new();
+            Flatten();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ErrorHandler.Handle(ex, "Failed to load categories").UserMessage;
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private void Flatten()
+    {
+        _flat.Clear();
+        void Walk(CategoryTreeNodeDto n, int depth)
+        {
+            _flat.Add(new FlatRow(n.Id, n.Name, depth));
+            foreach (var c in n.Children) Walk(c, depth + 1);
+        }
+        foreach (var n in _tree) Walk(n, 0);
+    }
+
+    private async Task SeedDefaults()
+    {
+        _isWorking = true;
+        _errorMessage = null;
+        try
+        {
+            _tree = await ApiClient.SeedDefaultCategoriesAsync() ?? new();
+            Flatten();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ErrorHandler.Handle(ex, "Failed to import categories").UserMessage;
+        }
+        finally
+        {
+            _isWorking = false;
+        }
+    }
+
+    private void OpenCreate(Guid? parentId)
+    {
+        _isEdit = false;
+        _modalError = null;
+        _form = new CategoryForm { ParentCategoryId = parentId };
+        _showModal = true;
+    }
+
+    private void OpenEdit(CategoryTreeNodeDto node)
+    {
+        _isEdit = true;
+        _modalError = null;
+        _form = new CategoryForm
+        {
+            Id = node.Id,
+            Name = node.Name,
+            ParentCategoryId = node.ParentCategoryId,
+            OriginalParentId = node.ParentCategoryId,
+            Icon = node.Icon,
+            SortOrder = node.SortOrder,
+            IsShared = node.IsShared
+        };
+        _showModal = true;
+    }
+
+    private void CloseModal() => _showModal = false;
+
+    private async Task Save()
+    {
+        if (string.IsNullOrWhiteSpace(_form.Name))
+        {
+            _modalError = "Category name is required.";
+            return;
+        }
+
+        _isWorking = true;
+        _modalError = null;
+        try
+        {
+            if (_isEdit && _form.Id.HasValue)
+            {
+                await ApiClient.UpdateCategoryAsync(_form.Id.Value, new UpdateCategoryRequest
+                {
+                    Name = _form.Name.Trim(),
+                    Icon = _form.Icon,
+                    SortOrder = _form.SortOrder
+                });
+
+                // Re-parent if the parent changed.
+                if (_form.ParentCategoryId != _form.OriginalParentId)
+                {
+                    await ApiClient.MoveCategoryAsync(_form.Id.Value, new MoveCategoryRequest
+                    {
+                        NewParentId = _form.ParentCategoryId
+                    });
+                }
+            }
+            else
+            {
+                await ApiClient.CreateCategoryAsync(new CreateCategoryRequest
+                {
+                    Name = _form.Name.Trim(),
+                    ParentCategoryId = _form.ParentCategoryId,
+                    Icon = _form.Icon,
+                    IsShared = _form.IsShared
+                });
+            }
+
+            _showModal = false;
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _modalError = ErrorHandler.Handle(ex, "Failed to save category").UserMessage;
+        }
+        finally
+        {
+            _isWorking = false;
+        }
+    }
+
+    private async Task Delete(CategoryTreeNodeDto node)
+    {
+        _isWorking = true;
+        _actionError = null;
+        try
+        {
+            await ApiClient.DeleteCategoryAsync(node.Id);
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            // Surfaces the friendly CATEGORY_IN_USE message from the API.
+            _actionError = ErrorHandler.Handle(ex, "Failed to delete category").UserMessage;
+        }
+        finally
+        {
+            _isWorking = false;
+        }
+    }
+
+    private RenderFragment RenderNode(CategoryTreeNodeDto node, int depth) => __builder =>
+    {
+        <li class="list-group-item d-flex justify-content-between align-items-center">
+            <span style="padding-left:@(depth * 1.5)rem">
+                @if (!node.IsLeaf)
+                {
+                    <i class="bi bi-folder2-open me-2 text-secondary"></i>
+                }
+                else
+                {
+                    <i class="bi bi-tag me-2 text-secondary"></i>
+                }
+                @node.Name
+                @if (node.IsShared)
+                {
+                    <span class="badge bg-success ms-2">Shared</span>
+                }
+                @if (node.IsSystem)
+                {
+                    <span class="badge bg-light text-dark border ms-1">Default</span>
+                }
+            </span>
+            <span class="btn-group btn-group-sm">
+                <button class="btn btn-outline-secondary" title="Add sub-category"
+                        @onclick="() => OpenCreate(node.Id)" disabled="@_isWorking">
+                    <i class="bi bi-plus"></i>
+                </button>
+                <button class="btn btn-outline-secondary" title="Edit"
+                        @onclick="() => OpenEdit(node)" disabled="@_isWorking">
+                    <i class="bi bi-pencil"></i>
+                </button>
+                <button class="btn btn-outline-danger" title="Delete"
+                        @onclick="() => Delete(node)" disabled="@_isWorking">
+                    <i class="bi bi-trash"></i>
+                </button>
+            </span>
+        </li>
+        @foreach (var child in node.Children)
+        {
+            @RenderNode(child, depth + 1)
+        }
+    };
+}

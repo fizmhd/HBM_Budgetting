@@ -53,6 +53,13 @@ public partial class Program {
         builder.Services.AddScoped<IUserRepository, UserRepository>();
         builder.Services.AddScoped<IUserExternalLoginRepository, UserExternalLoginRepository>();
         builder.Services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
+        builder.Services.AddScoped<IHouseholdRepository, HouseholdRepository>();
+        builder.Services.AddScoped<IHouseholdMemberRepository, HouseholdMemberRepository>();
+        builder.Services.AddScoped<IHouseholdInviteRepository, HouseholdInviteRepository>();
+        builder.Services.AddScoped<IAccountRepository, AccountRepository>();
+        builder.Services.AddScoped<ICategoryRepository, CategoryRepository>();
+        builder.Services.AddScoped<ITransactionRepository, TransactionRepository>();
+        builder.Services.AddScoped<ITagRepository, TagRepository>();
 
         // Configure Options
         builder.Services.Configure<SupabaseOptions>(
@@ -87,6 +94,14 @@ public partial class Program {
         builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
         builder.Services.AddScoped<IAuthService, AuthService>();
         builder.Services.AddScoped<IUserService, UserService>();
+
+        // Domain services (Categories / Transactions)
+        builder.Services.AddScoped<ICategoryService, CategoryService>();
+        builder.Services.AddScoped<ICategoryReferenceChecker, BudgetTracker.Api.Services.Categories.CategoryReferenceChecker>();
+        builder.Services.AddScoped<ICategorySeeder, BudgetTracker.Api.Services.Categories.CategorySeeder>();
+        builder.Services.AddScoped<ITransactionService, TransactionService>();
+        builder.Services.AddScoped<IBalanceService, BalanceService>();
+        builder.Services.AddScoped<BudgetTracker.Api.Features.Transactions.TransactionWriteService>();
 
         // Add Security Services
         builder.Services.AddScoped<ICsrfService, CsrfService>();
