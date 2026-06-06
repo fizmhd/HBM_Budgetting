@@ -89,6 +89,58 @@ public class TransactionEndpointTests : IClassFixture<AuthenticatedWebApplicatio
     }
 
     [Fact]
+    public async Task Account_less_expense_is_created_and_excluded_from_balances()
+    {
+        var client = await _factory.CreateAuthenticatedClientAsync();
+        var account = await CreateAccountAsync(client, "Checking", opening: 1000m);
+        var category = await CreateCategoryAsync(client, "Groceries");
+
+        var request = new CreateTransactionRequest
+        {
+            Type = "Expense",
+            AccountId = null, // account-less "cash" entry
+            Date = new DateOnly(2026, 6, 1),
+            Amount = 80m,
+            Description = "Cash lunch",
+            Splits = new() { new TransactionSplitInput { CategoryId = category.Id, Amount = 80m } }
+        };
+
+        var response = await client.PostAsJsonAsync("/api/v1/transactions", request);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var created = await response.Content.ReadFromJsonAsync<TransactionDto>();
+        created!.AccountId.Should().BeNull();
+
+        // It is returned by the unfiltered list and by the explicit "no account" filter.
+        var list = await client.GetFromJsonAsync<TransactionListResponse>("/api/v1/transactions");
+        list!.TotalCount.Should().Be(1);
+        var cashOnly = await client.GetFromJsonAsync<TransactionListResponse>("/api/v1/transactions?noAccount=true");
+        cashOnly!.TotalCount.Should().Be(1);
+
+        // The account balance is untouched by an account-less entry.
+        var refreshed = await client.GetFromJsonAsync<AccountDto>($"/api/v1/accounts/{account.Id}");
+        refreshed!.Balance.Should().Be(1000m);
+    }
+
+    [Fact]
+    public async Task Transfer_without_an_account_is_rejected()
+    {
+        var client = await _factory.CreateAuthenticatedClientAsync();
+        var to = await CreateAccountAsync(client, "Savings");
+
+        var request = new CreateTransactionRequest
+        {
+            Type = "Transfer",
+            AccountId = null, // transfers require a source account
+            CounterAccountId = to.Id,
+            Date = new DateOnly(2026, 6, 1),
+            Amount = 100m
+        };
+
+        var response = await client.PostAsJsonAsync("/api/v1/transactions", request);
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
     public async Task Transfer_moves_money_and_nets_zero()
     {
         var client = await _factory.CreateAuthenticatedClientAsync();

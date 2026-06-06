@@ -121,6 +121,7 @@ public class TransactionQuery
     [AliasAs("from")] public string? From { get; set; }
     [AliasAs("to")] public string? To { get; set; }
     [AliasAs("accountId")] public Guid? AccountId { get; set; }
+    [AliasAs("noAccount")] public bool? NoAccount { get; set; }
     [AliasAs("categoryId")] public Guid? CategoryId { get; set; }
     [AliasAs("type")] public string? Type { get; set; }
     [AliasAs("tag")] public string? Tag { get; set; }

@@ -9,7 +9,7 @@ namespace BudgetTracker.Api.Services.Interfaces;
 public sealed record TransactionValidationInput(
     TransactionType Type,
     decimal Amount,
-    Guid AccountId,
+    Guid? AccountId,
     Guid? CounterAccountId,
     IReadOnlyList<TransactionSplitValue> Splits);
 

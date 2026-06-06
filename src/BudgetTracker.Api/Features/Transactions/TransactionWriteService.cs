@@ -60,11 +60,16 @@ public sealed class TransactionWriteService
                 "You must belong to a household to share a transaction."));
         }
 
-        // Source account must be visible.
-        var account = await _accounts.GetByIdAsync(req.AccountId, ct);
-        if (account is null || !account.IsVisibleTo(userId, householdId))
+        // Source account (when supplied) must be visible. Income/expense may be account-less ("cash");
+        // a transfer always requires one — that rule is enforced by the structural invariants below.
+        Account? account = null;
+        if (req.AccountId is { } accountId)
         {
-            return Result.Failure(Error.Validation(AccountNotFoundCode, "Account not found."));
+            account = await _accounts.GetByIdAsync(accountId, ct);
+            if (account is null || !account.IsVisibleTo(userId, householdId))
+            {
+                return Result.Failure(Error.Validation(AccountNotFoundCode, "Account not found."));
+            }
         }
 
         Account? counterAccount = null;
@@ -82,7 +87,10 @@ public sealed class TransactionWriteService
                 return Result.Failure(Error.Validation(AccountNotFoundCode, "Destination account not found."));
             }
 
-            if (!string.Equals(account.CurrencyCode, counterAccount.CurrencyCode, StringComparison.OrdinalIgnoreCase))
+            // A transfer always has a source account; the structural invariants below reject one
+            // without it, so the currency check only runs when both accounts resolved.
+            if (account is not null &&
+                !string.Equals(account.CurrencyCode, counterAccount.CurrencyCode, StringComparison.OrdinalIgnoreCase))
             {
                 return Result.Failure(Error.Validation(CurrencyMismatchCode,
                     "Transfers must be between accounts of the same currency."));
@@ -123,7 +131,10 @@ public sealed class TransactionWriteService
         transaction.Date = req.Date;
         transaction.Type = type;
         transaction.Amount = req.Amount;
-        transaction.CurrencyCode = account.CurrencyCode;
+        // An account-less entry has no account to inherit a currency from, so fall back to the
+        // requested currency (SEK in the MVP).
+        transaction.CurrencyCode = account?.CurrencyCode
+            ?? (string.IsNullOrWhiteSpace(req.CurrencyCode) ? "SEK" : req.CurrencyCode.Trim().ToUpperInvariant());
         transaction.Description = string.IsNullOrWhiteSpace(req.Description) ? null : req.Description.Trim();
         transaction.Notes = string.IsNullOrWhiteSpace(req.Notes) ? null : req.Notes.Trim();
         transaction.CounterAccountId = type == TransactionType.Transfer ? req.CounterAccountId : null;

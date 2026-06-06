@@ -15,14 +15,17 @@
 <div class="container py-4">
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h1 class="h3 mb-0">Transactions</h1>
-        <button class="btn btn-primary" @onclick="OpenCreate" disabled="@(_accounts.Count == 0)">
+        <button class="btn btn-primary" @onclick="OpenCreate">
             <i class="bi bi-plus-lg me-1"></i> Add transaction
         </button>
     </div>
 
     @if (_accounts.Count == 0 && !_isLoading)
     {
-        <div class="alert alert-info">Add an account first before recording transactions.</div>
+        <div class="alert alert-info">
+            No accounts yet — you can still record income and expenses as account-less ("cash") entries.
+            Add an account to track balances and make transfers.
+        </div>
     }
 
     <!-- Filter bar + month quick-nav -->
@@ -41,8 +44,10 @@
 
             <div class="row g-2">
                 <div class="col-md-3">
-                    <select class="form-select form-select-sm" @bind="_filter.AccountId">
+                    <select class="form-select form-select-sm" value="@_accountFilterValue"
+                            @onchange="OnAccountFilterChanged">
                         <option value="">All accounts</option>
+                        <option value="none">No account / Cash</option>
                         @foreach (var a in _accounts)
                         {
                             <option value="@a.Id">@a.Name</option>
@@ -117,7 +122,14 @@
                             <tr>
                                 <td>@t.Date.ToString("yyyy-MM-dd")</td>
                                 <td>
-                                    @t.AccountName
+                                    @if (t.AccountId is null)
+                                    {
+                                        <span class="text-muted fst-italic">Cash</span>
+                                    }
+                                    else
+                                    {
+                                        @t.AccountName
+                                    }
                                     @if (t.Type == "Transfer")
                                     {
                                         <i class="bi bi-arrow-right mx-1"></i> @t.CounterAccountName
@@ -184,6 +196,14 @@
                         <div class="col-md-4">
                             <label class="form-label">@(_form.Type == "Transfer" ? "From account" : "Account")</label>
                             <select class="form-select" @bind="_form.AccountId">
+                                @if (_form.Type == "Transfer")
+                                {
+                                    <option value="">Select source…</option>
+                                }
+                                else
+                                {
+                                    <option value="">No account / Cash</option>
+                                }
                                 @foreach (var a in _accounts)
                                 {
                                     <option value="@a.Id">@a.Name (@a.CurrencyCode)</option>
@@ -292,7 +312,7 @@
     {
         public Guid? Id { get; set; }
         public string Type { get; set; } = "Expense";
-        public Guid AccountId { get; set; }
+        public Guid? AccountId { get; set; }
         public Guid? CounterAccountId { get; set; }
         public DateTime Date { get; set; } = DateTime.Today;
         public decimal Amount { get; set; }
@@ -306,6 +326,7 @@
     private sealed class FilterState
     {
         public Guid? AccountId { get; set; }
+        public bool NoAccount { get; set; }
         public Guid? CategoryId { get; set; }
         public string? Type { get; set; }
         public string? Tag { get; set; }
@@ -342,11 +363,13 @@
     {
         get
         {
-            if (_form.Amount <= 0 || _form.AccountId == Guid.Empty) return false;
+            if (_form.Amount <= 0) return false;
             if (_form.Type == "Transfer")
             {
-                return _form.CounterAccountId is { } c && c != _form.AccountId;
+                // Transfers move money between two distinct accounts — both are required (no cash).
+                return _form.AccountId is { } from && _form.CounterAccountId is { } to && from != to;
             }
+            // Income/expense may be account-less ("cash"), so no account is required here.
             return _splitsBalanced && _form.Splits.All(s => s.CategoryId is not null && s.Amount > 0);
         }
     }
@@ -383,6 +406,7 @@
                 From = _filter.From?.ToString("yyyy-MM-dd"),
                 To = _filter.To?.ToString("yyyy-MM-dd"),
                 AccountId = _filter.AccountId,
+                NoAccount = _filter.NoAccount ? true : null,
                 CategoryId = _filter.CategoryId,
                 Type = string.IsNullOrEmpty(_filter.Type) ? null : _filter.Type,
                 Tag = string.IsNullOrWhiteSpace(_filter.Tag) ? null : _filter.Tag,
@@ -457,13 +481,35 @@
         await LoadAsync();
     }
 
+    // The account filter holds three states in one select: "" (all), "none" (account-less only), or an account id.
+    private string _accountFilterValue =>
+        _filter.NoAccount ? "none" : _filter.AccountId?.ToString() ?? "";
+
+    private async Task OnAccountFilterChanged(ChangeEventArgs e)
+    {
+        var value = e.Value?.ToString();
+        if (value == "none")
+        {
+            _filter.NoAccount = true;
+            _filter.AccountId = null;
+        }
+        else
+        {
+            _filter.NoAccount = false;
+            _filter.AccountId = Guid.TryParse(value, out var id) ? id : null;
+        }
+        _filter.Page = 1;
+        await LoadAsync();
+    }
+
     private void OpenCreate()
     {
         _isEdit = false;
         _modalError = null;
         _form = new TxnForm
         {
-            AccountId = _accounts.FirstOrDefault()?.Id ?? Guid.Empty,
+            // Default to the first account when one exists; otherwise leave null (account-less "cash").
+            AccountId = _accounts.FirstOrDefault()?.Id,
             Date = DateTime.Today
         };
         _showModal = true;

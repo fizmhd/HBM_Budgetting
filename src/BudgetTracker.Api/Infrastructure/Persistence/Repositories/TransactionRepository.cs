@@ -31,6 +31,11 @@ public class TransactionRepository : Repository<Transaction>, ITransactionReposi
             // Match either side of a transfer as well as plain income/expense.
             query = query.Where(t => t.AccountId == accountId || t.CounterAccountId == accountId);
         }
+        else if (filter.NoAccount)
+        {
+            // Account-less ("cash") entries only.
+            query = query.Where(t => t.AccountId == null);
+        }
         if (filter.Type is { } type)
         {
             query = query.Where(t => t.Type == type);
@@ -111,16 +116,21 @@ public class TransactionRepository : Repository<Transaction>, ITransactionReposi
 
         foreach (var t in visible)
         {
+            // Account-less ("cash") income/expense belong to no account and are excluded from every
+            // balance (TASK 4.4). Transfers always carry both account ids.
             switch (t.Type)
             {
-                case TransactionType.Income:
-                    Apply(t.AccountId, t.Amount);
+                case TransactionType.Income when t.AccountId is { } incomeAccount:
+                    Apply(incomeAccount, t.Amount);
                     break;
-                case TransactionType.Expense:
-                    Apply(t.AccountId, -t.Amount);
+                case TransactionType.Expense when t.AccountId is { } expenseAccount:
+                    Apply(expenseAccount, -t.Amount);
                     break;
                 case TransactionType.Transfer:
-                    Apply(t.AccountId, -t.Amount);
+                    if (t.AccountId is { } source)
+                    {
+                        Apply(source, -t.Amount);
+                    }
                     if (t.CounterAccountId is { } dest)
                     {
                         Apply(dest, t.Amount);

@@ -8,9 +8,12 @@ namespace BudgetTracker.Api.Infrastructure.Persistence.Entities;
 public class Transaction : OwnedEntity
 {
     /// <summary>
-    /// Account the transaction belongs to. For a transfer this is the source ("from").
+    /// Account the transaction belongs to. For a transfer this is the source ("from"). Null for an
+    /// account-less ("cash") income/expense — such entries count toward income/expense, category,
+    /// budget and dashboard totals but are excluded from every account balance (TASK 4.1 / 4.4).
+    /// Always set for a transfer.
     /// </summary>
-    public Guid AccountId { get; set; }
+    public Guid? AccountId { get; set; }
 
     /// <summary>
     /// Calendar date the transaction occurred (no time component).
