@@ -1,5 +1,6 @@
 using BudgetTracker.Shared.DTOs.Accounts;
 using BudgetTracker.Shared.DTOs.Auth;
+using BudgetTracker.Shared.DTOs.Budgets;
 using BudgetTracker.Shared.DTOs.Categories;
 using BudgetTracker.Shared.DTOs.Households;
 using BudgetTracker.Shared.DTOs.Transactions;
@@ -111,6 +112,31 @@ public interface IApiClient
 
     [Delete("/api/v1/transactions/{id}")]
     Task DeleteTransactionAsync(Guid id);
+
+    // Budget endpoints
+    [Get("/api/v1/budgets")]
+    Task<List<BudgetDto>?> GetBudgetsAsync([Query] BudgetQuery query);
+
+    [Get("/api/v1/budgets/{id}")]
+    Task<BudgetDto?> GetBudgetAsync(Guid id);
+
+    [Post("/api/v1/budgets")]
+    Task<BudgetDto?> CreateBudgetAsync([Body] CreateBudgetRequest request);
+
+    [Put("/api/v1/budgets/{id}")]
+    Task<BudgetDto?> UpdateBudgetAsync(Guid id, [Body] UpdateBudgetRequest request);
+
+    [Delete("/api/v1/budgets/{id}")]
+    Task DeleteBudgetAsync(Guid id);
+}
+
+/// <summary>
+/// Query-string parameters for the budgets list (the active period window).
+/// </summary>
+public class BudgetQuery
+{
+    [AliasAs("from")] public string? From { get; set; }
+    [AliasAs("to")] public string? To { get; set; }
 }
 
 /// <summary>

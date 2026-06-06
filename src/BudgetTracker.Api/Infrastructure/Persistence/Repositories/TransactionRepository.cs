@@ -143,6 +143,33 @@ public class TransactionRepository : Repository<Transaction>, ITransactionReposi
     }
 
     /// <inheritdoc />
+    public async Task<Dictionary<Guid, decimal>> GetSpentByCategoryAsync(Guid userId, Guid? householdId,
+        IReadOnlyCollection<Guid> categoryIds, DateOnly from, DateOnly to,
+        CancellationToken cancellationToken = default)
+    {
+        if (categoryIds.Count == 0)
+        {
+            return new Dictionary<Guid, decimal>();
+        }
+
+        // Only expense transactions consume a spending budget; transfers carry no splits and income
+        // splits must never count. Join splits to their (visible, in-range, expense) transaction.
+        var visibleExpenses = _dbSet
+            .VisibleTo(userId, householdId)
+            .Where(t => t.Type == TransactionType.Expense && t.Date >= from && t.Date <= to);
+
+        var rows = await (
+            from split in _context.Set<TransactionSplit>()
+            join txn in visibleExpenses on split.TransactionId equals txn.Id
+            where categoryIds.Contains(split.CategoryId)
+            group split by split.CategoryId into grouped
+            select new { CategoryId = grouped.Key, Total = grouped.Sum(s => s.Amount) })
+            .ToListAsync(cancellationToken);
+
+        return rows.ToDictionary(r => r.CategoryId, r => r.Total);
+    }
+
+    /// <inheritdoc />
     public void RemoveSplits(IEnumerable<TransactionSplit> splits)
     {
         _context.Set<TransactionSplit>().RemoveRange(splits);
