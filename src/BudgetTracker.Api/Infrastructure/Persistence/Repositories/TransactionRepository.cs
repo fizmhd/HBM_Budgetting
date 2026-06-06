@@ -143,6 +143,50 @@ public class TransactionRepository : Repository<Transaction>, ITransactionReposi
     }
 
     /// <inheritdoc />
+    public async Task<(decimal Income, decimal Expenses)> GetMonthlyTotalsAsync(Guid userId, Guid? householdId,
+        bool householdScope, DateOnly from, DateOnly to, CancellationToken cancellationToken = default)
+    {
+        var rows = await Scoped(userId, householdId, householdScope)
+            .Where(t => t.Date >= from && t.Date <= to &&
+                        (t.Type == TransactionType.Income || t.Type == TransactionType.Expense))
+            .GroupBy(t => t.Type)
+            .Select(g => new { Type = g.Key, Sum = g.Sum(t => t.Amount) })
+            .ToListAsync(cancellationToken);
+
+        var income = rows.FirstOrDefault(r => r.Type == TransactionType.Income)?.Sum ?? 0m;
+        var expenses = rows.FirstOrDefault(r => r.Type == TransactionType.Expense)?.Sum ?? 0m;
+        return (income, expenses);
+    }
+
+    /// <inheritdoc />
+    public async Task<List<(Guid CategoryId, decimal Amount)>> GetExpenseByCategoryAsync(Guid userId,
+        Guid? householdId, bool householdScope, DateOnly from, DateOnly to,
+        CancellationToken cancellationToken = default)
+    {
+        var scopedExpenses = Scoped(userId, householdId, householdScope)
+            .Where(t => t.Type == TransactionType.Expense && t.Date >= from && t.Date <= to);
+
+        var rows = await (
+            from split in _context.Set<TransactionSplit>()
+            join txn in scopedExpenses on split.TransactionId equals txn.Id
+            group split by split.CategoryId into grouped
+            select new { CategoryId = grouped.Key, Amount = grouped.Sum(s => s.Amount) })
+            .ToListAsync(cancellationToken);
+
+        return rows.Select(r => (r.CategoryId, r.Amount)).ToList();
+    }
+
+    /// <summary>
+    /// Restricts the transaction set to the requested dashboard scope: everything visible to the caller
+    /// (own + household-shared) when <paramref name="householdScope"/> is true, otherwise only records
+    /// the caller owns.
+    /// </summary>
+    private IQueryable<Transaction> Scoped(Guid userId, Guid? householdId, bool householdScope) =>
+        householdScope
+            ? _dbSet.VisibleTo(userId, householdId)
+            : _dbSet.Where(t => t.OwnerUserId == userId);
+
+    /// <inheritdoc />
     public async Task<Dictionary<Guid, decimal>> GetSpentByCategoryAsync(Guid userId, Guid? householdId,
         IReadOnlyCollection<Guid> categoryIds, DateOnly from, DateOnly to,
         CancellationToken cancellationToken = default)

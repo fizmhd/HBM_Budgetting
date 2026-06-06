@@ -66,6 +66,22 @@ public interface ITransactionRepository : IRepository<Transaction>
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Totals income and expense amounts for the period. When <paramref name="householdScope"/> is
+    /// true the figures cover everything visible to the caller (own + household-shared); otherwise only
+    /// the caller's own records. Transfers are excluded (they net to zero). Backs the dashboard (7.1).
+    /// </summary>
+    Task<(decimal Income, decimal Expenses)> GetMonthlyTotalsAsync(Guid userId, Guid? householdId,
+        bool householdScope, DateOnly from, DateOnly to, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Sums expense split amounts grouped by category for the period, scoped as in
+    /// <see cref="GetMonthlyTotalsAsync"/>. Categories with no spend are absent. Backs the dashboard
+    /// by-category breakdown (7.1).
+    /// </summary>
+    Task<List<(Guid CategoryId, decimal Amount)>> GetExpenseByCategoryAsync(Guid userId, Guid? householdId,
+        bool householdScope, DateOnly from, DateOnly to, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Sums expense split amounts grouped by category, over the transactions visible to the caller
     /// whose date falls within [<paramref name="from"/>, <paramref name="to"/>] and whose split
     /// category is one of <paramref name="categoryIds"/>. Backs budget spent-vs-limit (TASK 6.2):

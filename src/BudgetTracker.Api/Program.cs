@@ -113,6 +113,9 @@ public partial class Program {
         builder.Services.AddScoped<BudgetTracker.Api.Infrastructure.Email.IEmailSender,
             BudgetTracker.Api.Infrastructure.Email.LoggingEmailSender>();
 
+        // Domain services (Dashboard)
+        builder.Services.AddScoped<IDashboardService, BudgetTracker.Api.Services.Dashboard.DashboardService>();
+
         // Add Security Services
         builder.Services.AddScoped<ICsrfService, CsrfService>();
         builder.Services.AddSingleton<PasswordValidator>();
