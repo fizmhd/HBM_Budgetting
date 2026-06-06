@@ -183,6 +183,17 @@ public partial class Program {
 
         var app = builder.Build();
 
+        // Dev convenience: apply any pending EF migrations on startup so the local database always
+        // matches the code after pulling a branch. Development only — never auto-migrate a real
+        // (staging/production) database; that stays a deliberate, reviewed `dotnet ef database update`.
+        // (The Testing environment doesn't register the Npgsql DbContext, so it is excluded here too.)
+        if (app.Environment.IsDevelopment())
+        {
+            using var scope = app.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.Database.Migrate();
+        }
+
         // Configure middleware
         if (app.Environment.IsDevelopment())
         {
