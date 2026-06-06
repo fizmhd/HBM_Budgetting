@@ -25,6 +25,7 @@ public class AppDbContext : DbContext
     public DbSet<TransactionSplit> TransactionSplits => Set<TransactionSplit>();
     public DbSet<Tag> Tags => Set<Tag>();
     public DbSet<TransactionTag> TransactionTags => Set<TransactionTag>();
+    public DbSet<Budget> Budgets => Set<Budget>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

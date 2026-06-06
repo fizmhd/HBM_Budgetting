@@ -66,6 +66,17 @@ public interface ITransactionRepository : IRepository<Transaction>
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Sums expense split amounts grouped by category, over the transactions visible to the caller
+    /// whose date falls within [<paramref name="from"/>, <paramref name="to"/>] and whose split
+    /// category is one of <paramref name="categoryIds"/>. Backs budget spent-vs-limit (TASK 6.2):
+    /// only expense splits count toward "spent" (income/transfers never consume a spending budget).
+    /// Categories with no spend are absent from the result.
+    /// </summary>
+    Task<Dictionary<Guid, decimal>> GetSpentByCategoryAsync(Guid userId, Guid? householdId,
+        IReadOnlyCollection<Guid> categoryIds, DateOnly from, DateOnly to,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Marks the given splits for deletion (used when replacing a transaction's splits on update).
     /// </summary>
     void RemoveSplits(IEnumerable<TransactionSplit> splits);

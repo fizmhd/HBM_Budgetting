@@ -5,20 +5,23 @@ namespace BudgetTracker.Api.Services.Categories;
 
 /// <summary>
 /// Default <see cref="ICategoryReferenceChecker"/>: a category is "in use" when a transaction split
-/// points at it. Budget references are wired in Sprint 6 (no budget table exists yet).
+/// (Sprint 4) or a budget (Sprint 6) points at it.
 /// </summary>
 public sealed class CategoryReferenceChecker : ICategoryReferenceChecker
 {
     private readonly ITransactionRepository _transactions;
+    private readonly IBudgetRepository _budgets;
 
-    public CategoryReferenceChecker(ITransactionRepository transactions)
+    public CategoryReferenceChecker(ITransactionRepository transactions, IBudgetRepository budgets)
     {
         _transactions = transactions;
+        _budgets = budgets;
     }
 
     /// <inheritdoc />
-    public Task<bool> IsReferencedAsync(Guid categoryId, CancellationToken cancellationToken = default)
+    public async Task<bool> IsReferencedAsync(Guid categoryId, CancellationToken cancellationToken = default)
     {
-        return _transactions.AnySplitForCategoryAsync(categoryId, cancellationToken);
+        return await _transactions.AnySplitForCategoryAsync(categoryId, cancellationToken)
+            || await _budgets.AnyForCategoryAsync(categoryId, cancellationToken);
     }
 }
