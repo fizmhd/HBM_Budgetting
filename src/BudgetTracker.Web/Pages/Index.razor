@@ -9,54 +9,7 @@
 
 <AuthorizeView>
     <Authorized>
-        <div class="dashboard-container">
-            <div class="dashboard-header">
-                <h1>Welcome back, @context.User.Identity?.Name! 👋</h1>
-                <p class="subtitle">Here's your financial overview</p>
-            </div>
-
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <div class="stat-icon">💵</div>
-                    <div class="stat-content">
-                        <p class="stat-label">Total Balance</p>
-                        <h3 class="stat-value">$0.00</h3>
-                    </div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-icon">📊</div>
-                    <div class="stat-content">
-                        <p class="stat-label">This Month</p>
-                        <h3 class="stat-value">$0.00</h3>
-                    </div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-icon">🎯</div>
-                    <div class="stat-content">
-                        <p class="stat-label">Budget Left</p>
-                        <h3 class="stat-value">$0.00</h3>
-                    </div>
-                </div>
-            </div>
-
-            <div class="quick-actions">
-                <h2>Quick Actions</h2>
-                <div class="action-grid">
-                    <a href="/transactions/new" class="action-card">
-                        <span class="action-icon">➕</span>
-                        <span class="action-text">Add Transaction</span>
-                    </a>
-                    <a href="/budgets/new" class="action-card">
-                        <span class="action-icon">🎯</span>
-                        <span class="action-text">Create Budget</span>
-                    </a>
-                    <a href="/reports" class="action-card">
-                        <span class="action-icon">📈</span>
-                        <span class="action-text">View Reports</span>
-                    </a>
-                </div>
-            </div>
-        </div>
+        <DashboardView />
     </Authorized>
     <NotAuthorized>
         <div class="landing-page">

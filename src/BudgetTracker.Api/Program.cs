@@ -115,6 +115,9 @@ public partial class Program {
         builder.Services.AddScoped<BudgetTracker.Api.Infrastructure.Email.IEmailSender,
             BudgetTracker.Api.Infrastructure.Email.LoggingEmailSender>();
 
+        // Domain services (Dashboard)
+        builder.Services.AddScoped<IDashboardService, BudgetTracker.Api.Services.Dashboard.DashboardService>();
+
         // Domain services (Recurring)
         builder.Services.AddScoped<IRecurringGenerationService,
             BudgetTracker.Api.Services.Recurring.RecurringGenerationService>();

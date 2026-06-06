@@ -2,6 +2,7 @@ using BudgetTracker.Shared.DTOs.Accounts;
 using BudgetTracker.Shared.DTOs.Auth;
 using BudgetTracker.Shared.DTOs.Budgets;
 using BudgetTracker.Shared.DTOs.Categories;
+using BudgetTracker.Shared.DTOs.Dashboard;
 using BudgetTracker.Shared.DTOs.Households;
 using BudgetTracker.Shared.DTOs.Recurring;
 using BudgetTracker.Shared.DTOs.Transactions;
@@ -130,6 +131,10 @@ public interface IApiClient
     [Delete("/api/v1/budgets/{id}")]
     Task DeleteBudgetAsync(Guid id);
 
+    // Dashboard endpoint
+    [Get("/api/v1/dashboard/monthly")]
+    Task<MonthlyDashboardDto?> GetMonthlyDashboardAsync([Query] DashboardQuery query);
+
     // Recurring endpoints
     [Get("/api/v1/recurring")]
     Task<List<RecurringRuleDto>?> GetRecurringRulesAsync([Query] string? kind = null);
@@ -163,6 +168,18 @@ public interface IApiClient
 
     [Post("/api/v1/recurring/occurrences/{id}/confirm")]
     Task<RecurringOccurrenceDto?> ConfirmOccurrenceAsync(Guid id);
+}
+
+/// <summary>
+/// Query-string parameters for the monthly dashboard.
+/// </summary>
+public class DashboardQuery
+{
+    /// <summary>Target month, "yyyy-MM". Omitted = current month.</summary>
+    [AliasAs("month")] public string? Month { get; set; }
+
+    /// <summary>"individual" or "household" (default).</summary>
+    [AliasAs("scope")] public string? Scope { get; set; }
 }
 
 /// <summary>
