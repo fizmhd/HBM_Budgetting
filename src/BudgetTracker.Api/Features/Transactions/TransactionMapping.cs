@@ -14,7 +14,7 @@ public static class TransactionMapping
     {
         Id = transaction.Id,
         AccountId = transaction.AccountId,
-        AccountName = accountNames.GetValueOrDefault(transaction.AccountId),
+        AccountName = transaction.AccountId is { } accountId ? accountNames.GetValueOrDefault(accountId) : null,
         Date = transaction.Date,
         Type = transaction.Type.ToString(),
         Amount = transaction.Amount,

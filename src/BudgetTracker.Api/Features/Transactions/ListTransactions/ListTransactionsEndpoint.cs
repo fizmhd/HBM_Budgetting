@@ -73,6 +73,7 @@ public class ListTransactionsEndpoint : EndpointWithoutRequest<TransactionListRe
             From = ParseDate(Query<string>("from", isRequired: false)),
             To = ParseDate(Query<string>("to", isRequired: false)),
             AccountId = Query<Guid?>("accountId", isRequired: false),
+            NoAccount = Query<bool?>("noAccount", isRequired: false) ?? false,
             CategoryId = Query<Guid?>("categoryId", isRequired: false),
             Type = type,
             Tag = Query<string>("tag", isRequired: false),

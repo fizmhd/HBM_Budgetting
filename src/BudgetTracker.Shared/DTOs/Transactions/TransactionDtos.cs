@@ -21,7 +21,9 @@ public class TransactionSplitDto
 public class TransactionDto
 {
     public Guid Id { get; set; }
-    public Guid AccountId { get; set; }
+
+    /// <summary>Owning account, or null for an account-less ("cash") income/expense.</summary>
+    public Guid? AccountId { get; set; }
     public string? AccountName { get; set; }
 
     public DateOnly Date { get; set; }
@@ -73,7 +75,11 @@ public class CreateTransactionRequest
     /// <summary>"Income", "Expense", or "Transfer".</summary>
     public string Type { get; set; } = "Expense";
 
-    public Guid AccountId { get; set; }
+    /// <summary>
+    /// Owning account. Optional for income/expense (null = account-less "cash" entry); required for a
+    /// transfer, where it is the source ("from") account.
+    /// </summary>
+    public Guid? AccountId { get; set; }
     public DateOnly Date { get; set; }
     public decimal Amount { get; set; }
     public string CurrencyCode { get; set; } = "SEK";
