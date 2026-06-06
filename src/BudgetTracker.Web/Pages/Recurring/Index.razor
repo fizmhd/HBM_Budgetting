@@ -1,13 +1,595 @@
 @page "/recurring"
+@using BudgetTracker.Shared.DTOs.Accounts
+@using BudgetTracker.Shared.DTOs.Categories
+@using BudgetTracker.Shared.DTOs.Recurring
+@using BudgetTracker.Web.Services
+@using BudgetTracker.Web.Services.ErrorHandling
+@using BudgetTracker.Web.Components.Shared
 @using Microsoft.AspNetCore.Authorization
 @attribute [Authorize]
+@inject IApiClient ApiClient
+@inject ApiErrorHandler ErrorHandler
 
 <PageTitle>Recurring Payments - Budget Tracker</PageTitle>
 
 <div class="container py-4">
-    <h1 class="h3 mb-3">Recurring Payments</h1>
-    <div class="alert alert-info" role="alert">
-        <i class="bi bi-clock-history me-2"></i>
-        Recurring payments arrive in Sprint 5. This section is part of the navigation shell.
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1 class="h3 mb-0">Recurring Payments</h1>
+        <div>
+            <button class="btn btn-outline-secondary me-2" @onclick="GenerateNow" disabled="@_isWorking">
+                <i class="bi bi-arrow-repeat me-1"></i> Generate due
+            </button>
+            <button class="btn btn-primary" @onclick="OpenCreate">
+                <i class="bi bi-plus-lg me-1"></i> Add rule
+            </button>
+        </div>
     </div>
+
+    <!-- Pending confirmations -->
+    @if (_pending.Count > 0)
+    {
+        <div class="card shadow-sm mb-3 border-warning">
+            <div class="card-header bg-warning-subtle fw-semibold">
+                Pending confirmation (@_pending.Count)
+            </div>
+            <div class="table-responsive">
+                <table class="table align-middle mb-0">
+                    <tbody>
+                        @foreach (var o in _pending)
+                        {
+                            <tr>
+                                <td>@o.DueDate.ToString("yyyy-MM-dd")</td>
+                                <td>@o.RuleName</td>
+                                <td class="@(o.RuleType == "Income" ? "text-success" : "text-danger")">
+                                    @o.Amount.ToString("N2") @o.CurrencyCode
+                                </td>
+                                <td class="text-end">
+                                    <button class="btn btn-sm btn-success me-1" @onclick="() => Confirm(o)" disabled="@_isWorking">Confirm</button>
+                                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => OpenSkip(o)" disabled="@_isWorking">Skip</button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+
+    <!-- Kind filter -->
+    <ul class="nav nav-pills mb-3">
+        @foreach (var (key, label) in _kinds)
+        {
+            <li class="nav-item">
+                <button class="nav-link @(_kind == key ? "active" : "")" @onclick="() => SetKind(key)">@label</button>
+            </li>
+        }
+    </ul>
+
+    @if (_isLoading)
+    {
+        <LoadingSpinner />
+    }
+    else if (!string.IsNullOrEmpty(_errorMessage))
+    {
+        <ErrorAlert Message="@_errorMessage" />
+    }
+    else if (_kind == "emi")
+    {
+        <div class="alert alert-info">EMIs / loans arrive in Phase 2.</div>
+    }
+    else if (_rules.Count == 0)
+    {
+        <div class="alert alert-info">No recurring @(_kind == "all" ? "" : _kind + " ")rules yet. Add one to stop re-entering repeating income or expenses.</div>
+    }
+    else
+    {
+        <div class="card shadow-sm">
+            <div class="table-responsive">
+                <table class="table align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Schedule</th>
+                            <th>Next due</th>
+                            <th class="text-end">Amount</th>
+                            <th>Mode</th>
+                            <th>Status</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var r in _rules)
+                        {
+                            <tr>
+                                <td>
+                                    @r.Name
+                                    @if (r.IsSubscription)
+                                    {
+                                        <span class="badge bg-info-subtle text-dark border ms-1">subscription</span>
+                                    }
+                                </td>
+                                <td class="small text-muted">@ScheduleLabel(r)</td>
+                                <td>@r.NextDueDate.ToString("yyyy-MM-dd")</td>
+                                <td class="text-end @(r.Type == "Income" ? "text-success" : "text-danger")">
+                                    @r.Amount.ToString("N2") @r.CurrencyCode
+                                </td>
+                                <td class="small">@(r.GenerationMode == "AutoPost" ? "Auto-post" : "Confirm")</td>
+                                <td>
+                                    <span class="badge @(r.Status == "Active" ? "bg-success" : "bg-secondary")">@r.Status</span>
+                                </td>
+                                <td class="text-end">
+                                    @if (r.Status == "Active")
+                                    {
+                                        <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => Pause(r)" disabled="@_isWorking">Pause</button>
+                                    }
+                                    else
+                                    {
+                                        <button class="btn btn-sm btn-outline-success me-1" @onclick="() => Resume(r)" disabled="@_isWorking">Resume</button>
+                                    }
+                                    <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => OpenEdit(r)" disabled="@_isWorking">Edit</button>
+                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => Delete(r)" disabled="@_isWorking">Delete</button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
 </div>
+
+@if (_showModal)
+{
+    <div class="modal fade show d-block" tabindex="-1" role="dialog">
+        <div class="modal-dialog modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">@(_isEdit ? "Edit rule" : "Add rule")</h5>
+                    <button type="button" class="btn-close" @onclick="CloseModal"></button>
+                </div>
+                <div class="modal-body">
+                    @if (!string.IsNullOrEmpty(_modalError))
+                    {
+                        <div class="alert alert-danger">@_modalError</div>
+                    }
+
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Name</label>
+                            <input class="form-control" @bind="_form.Name" placeholder="e.g. Salary, Netflix" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Type</label>
+                            <select class="form-select" @bind="_form.Type">
+                                <option value="Expense">Expense</option>
+                                <option value="Income">Income</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Amount</label>
+                            <input type="number" step="0.01" class="form-control" @bind="_form.Amount" />
+                        </div>
+                    </div>
+
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Category</label>
+                            <CategoryPicker Tree="_tree" SelectedCategoryId="_form.CategoryId"
+                                            SelectedCategoryIdChanged="v => _form.CategoryId = v" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Account</label>
+                            <select class="form-select" @bind="_form.AccountId">
+                                <option value="">No account / Cash</option>
+                                @foreach (var a in _accounts)
+                                {
+                                    <option value="@a.Id">@a.Name (@a.CurrencyCode)</option>
+                                }
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="row g-2 mb-3 align-items-end">
+                        <div class="col-md-3">
+                            <label class="form-label">Every</label>
+                            <input type="number" min="1" class="form-control" @bind="_form.Interval" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Frequency</label>
+                            <select class="form-select" @bind="_form.Frequency">
+                                <option value="Daily">Day(s)</option>
+                                <option value="Weekly">Week(s)</option>
+                                <option value="Monthly">Month(s)</option>
+                                <option value="Yearly">Year(s)</option>
+                            </select>
+                        </div>
+                        @if (_form.Frequency == "Monthly")
+                        {
+                            <div class="col-md-3">
+                                <label class="form-label">Day of month</label>
+                                <input type="number" min="1" max="31" class="form-control" @bind="_form.DayOfMonth" placeholder="(start day)" />
+                            </div>
+                        }
+                        <div class="col-md-3">
+                            <label class="form-label">Mode</label>
+                            <select class="form-select" @bind="_form.GenerationMode">
+                                <option value="AutoPost">Auto-post</option>
+                                <option value="PendingConfirm">Confirm first</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-4">
+                            <label class="form-label">Start date</label>
+                            <input type="date" class="form-control" @bind="_form.StartDate" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">End date (optional)</label>
+                            <input type="date" class="form-control" @bind="_form.EndDate" />
+                        </div>
+                        <div class="col-md-4 d-flex align-items-end">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="isSub" @bind="_form.IsSubscription" />
+                                <label class="form-check-label" for="isSub">Subscription</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="ruleShared" @bind="_form.IsShared" />
+                        <label class="form-check-label" for="ruleShared">Share with household</label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CloseModal" disabled="@_isWorking">Cancel</button>
+                    <button type="button" class="btn btn-primary" @onclick="Save" disabled="@(_isWorking || !CanSubmit)">
+                        @if (_isWorking)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        Save
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+@if (_showSkip)
+{
+    <div class="modal fade show d-block" tabindex="-1" role="dialog">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Skip occurrence</h5>
+                    <button type="button" class="btn-close" @onclick="() => _showSkip = false"></button>
+                </div>
+                <div class="modal-body">
+                    @if (!string.IsNullOrEmpty(_skipError))
+                    {
+                        <div class="alert alert-danger">@_skipError</div>
+                    }
+                    <label class="form-label">Reason (required)</label>
+                    <input class="form-control" @bind="_skipReason" placeholder="e.g. paid manually this month" />
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="() => _showSkip = false" disabled="@_isWorking">Cancel</button>
+                    <button type="button" class="btn btn-danger" @onclick="ConfirmSkip" disabled="@(_isWorking || string.IsNullOrWhiteSpace(_skipReason))">Skip</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+@code {
+    private sealed class RuleForm
+    {
+        public Guid? Id { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string Type { get; set; } = "Expense";
+        public Guid? AccountId { get; set; }
+        public Guid? CategoryId { get; set; }
+        public decimal Amount { get; set; }
+        public string Frequency { get; set; } = "Monthly";
+        public int Interval { get; set; } = 1;
+        public int? DayOfMonth { get; set; }
+        public DateTime StartDate { get; set; } = DateTime.Today;
+        public DateTime? EndDate { get; set; }
+        public string GenerationMode { get; set; } = "AutoPost";
+        public bool IsSubscription { get; set; }
+        public bool IsShared { get; set; }
+    }
+
+    private static readonly (string Key, string Label)[] _kinds =
+    {
+        ("all", "All"), ("expense", "Expenses"), ("income", "Income"),
+        ("subscription", "Subscriptions"), ("emi", "EMIs / loans")
+    };
+
+    private List<RecurringRuleDto> _rules = new();
+    private List<RecurringOccurrenceDto> _pending = new();
+    private List<AccountDto> _accounts = new();
+    private List<CategoryTreeNodeDto> _tree = new();
+
+    private string _kind = "all";
+    private bool _isLoading = true;
+    private bool _isWorking;
+    private string? _errorMessage;
+
+    private bool _showModal;
+    private bool _isEdit;
+    private string? _modalError;
+    private RuleForm _form = new();
+
+    private bool _showSkip;
+    private string? _skipReason;
+    private string? _skipError;
+    private RecurringOccurrenceDto? _skipTarget;
+
+    private bool CanSubmit =>
+        !string.IsNullOrWhiteSpace(_form.Name) && _form.CategoryId is not null && _form.Amount > 0 &&
+        _form.Interval >= 1 && (_form.EndDate is null || _form.EndDate.Value.Date >= _form.StartDate.Date);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadReferenceDataAsync();
+        await LoadAsync();
+    }
+
+    private async Task LoadReferenceDataAsync()
+    {
+        try
+        {
+            _accounts = (await ApiClient.GetAccountsAsync() ?? new()).Where(a => !a.IsArchived).ToList();
+            _tree = await ApiClient.GetCategoryTreeAsync() ?? new();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ErrorHandler.Handle(ex, "Failed to load accounts/categories").UserMessage;
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        _isLoading = true;
+        _errorMessage = null;
+        try
+        {
+            if (_kind != "emi")
+            {
+                var kindParam = _kind == "all" ? null : _kind;
+                _rules = await ApiClient.GetRecurringRulesAsync(kindParam) ?? new();
+            }
+            else
+            {
+                _rules = new();
+            }
+            _pending = await ApiClient.GetPendingOccurrencesAsync() ?? new();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ErrorHandler.Handle(ex, "Failed to load recurring rules").UserMessage;
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task SetKind(string kind)
+    {
+        _kind = kind;
+        await LoadAsync();
+    }
+
+    private async Task GenerateNow()
+    {
+        _isWorking = true;
+        _errorMessage = null;
+        try
+        {
+            await ApiClient.GenerateRecurringNowAsync();
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ErrorHandler.Handle(ex, "Failed to generate").UserMessage;
+        }
+        finally
+        {
+            _isWorking = false;
+        }
+    }
+
+    private void OpenCreate()
+    {
+        _isEdit = false;
+        _modalError = null;
+        _form = new RuleForm
+        {
+            AccountId = _accounts.FirstOrDefault()?.Id,
+            StartDate = DateTime.Today
+        };
+        _showModal = true;
+    }
+
+    private void OpenEdit(RecurringRuleDto r)
+    {
+        _isEdit = true;
+        _modalError = null;
+        _form = new RuleForm
+        {
+            Id = r.Id,
+            Name = r.Name,
+            Type = r.Type,
+            AccountId = r.AccountId,
+            CategoryId = r.CategoryId,
+            Amount = r.Amount,
+            Frequency = r.Frequency,
+            Interval = r.Interval,
+            DayOfMonth = r.DayOfMonth,
+            StartDate = r.StartDate.ToDateTime(TimeOnly.MinValue),
+            EndDate = r.EndDate?.ToDateTime(TimeOnly.MinValue),
+            GenerationMode = r.GenerationMode,
+            IsSubscription = r.IsSubscription,
+            IsShared = r.IsShared
+        };
+        _showModal = true;
+    }
+
+    private void CloseModal() => _showModal = false;
+
+    private async Task Save()
+    {
+        if (!CanSubmit)
+        {
+            _modalError = "Please complete the form (name, category, positive amount, valid dates).";
+            return;
+        }
+
+        _isWorking = true;
+        _modalError = null;
+        try
+        {
+            var request = new CreateRecurringRuleRequest
+            {
+                Name = _form.Name.Trim(),
+                Type = _form.Type,
+                AccountId = _form.AccountId,
+                CategoryId = _form.CategoryId,
+                Amount = _form.Amount,
+                Frequency = _form.Frequency,
+                Interval = _form.Interval,
+                DayOfMonth = _form.Frequency == "Monthly" ? _form.DayOfMonth : null,
+                StartDate = DateOnly.FromDateTime(_form.StartDate),
+                EndDate = _form.EndDate.HasValue ? DateOnly.FromDateTime(_form.EndDate.Value) : null,
+                GenerationMode = _form.GenerationMode,
+                IsSubscription = _form.IsSubscription,
+                IsShared = _form.IsShared
+            };
+
+            if (_isEdit && _form.Id.HasValue)
+            {
+                await ApiClient.UpdateRecurringRuleAsync(_form.Id.Value, new UpdateRecurringRuleRequest
+                {
+                    Name = request.Name, Type = request.Type, AccountId = request.AccountId,
+                    CategoryId = request.CategoryId, Amount = request.Amount, Frequency = request.Frequency,
+                    Interval = request.Interval, DayOfMonth = request.DayOfMonth, StartDate = request.StartDate,
+                    EndDate = request.EndDate, GenerationMode = request.GenerationMode,
+                    IsSubscription = request.IsSubscription, IsShared = request.IsShared
+                });
+            }
+            else
+            {
+                await ApiClient.CreateRecurringRuleAsync(request);
+            }
+
+            _showModal = false;
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _modalError = ErrorHandler.Handle(ex, "Failed to save rule").UserMessage;
+        }
+        finally
+        {
+            _isWorking = false;
+        }
+    }
+
+    private async Task Pause(RecurringRuleDto r) => await RuleAction(() => ApiClient.PauseRecurringRuleAsync(r.Id));
+    private async Task Resume(RecurringRuleDto r) => await RuleAction(() => ApiClient.ResumeRecurringRuleAsync(r.Id));
+
+    private async Task Delete(RecurringRuleDto r)
+    {
+        await RuleAction(async () => { await ApiClient.DeleteRecurringRuleAsync(r.Id); return null; });
+    }
+
+    private async Task RuleAction(Func<Task<RecurringRuleDto?>> action)
+    {
+        _isWorking = true;
+        _errorMessage = null;
+        try
+        {
+            await action();
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ErrorHandler.Handle(ex, "Action failed").UserMessage;
+        }
+        finally
+        {
+            _isWorking = false;
+        }
+    }
+
+    private async Task Confirm(RecurringOccurrenceDto o)
+    {
+        _isWorking = true;
+        _errorMessage = null;
+        try
+        {
+            await ApiClient.ConfirmOccurrenceAsync(o.Id);
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ErrorHandler.Handle(ex, "Failed to confirm").UserMessage;
+        }
+        finally
+        {
+            _isWorking = false;
+        }
+    }
+
+    private void OpenSkip(RecurringOccurrenceDto o)
+    {
+        _skipTarget = o;
+        _skipReason = null;
+        _skipError = null;
+        _showSkip = true;
+    }
+
+    private async Task ConfirmSkip()
+    {
+        if (string.IsNullOrWhiteSpace(_skipReason) || _skipTarget is null) return;
+        _isWorking = true;
+        _skipError = null;
+        try
+        {
+            await ApiClient.SkipOccurrenceAsync(_skipTarget.Id, new SkipOccurrenceRequest { Reason = _skipReason!.Trim() });
+            _showSkip = false;
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _skipError = ErrorHandler.Handle(ex, "Failed to skip").UserMessage;
+        }
+        finally
+        {
+            _isWorking = false;
+        }
+    }
+
+    private static string ScheduleLabel(RecurringRuleDto r)
+    {
+        var unit = r.Frequency switch
+        {
+            "Daily" => "day",
+            "Weekly" => "week",
+            "Monthly" => "month",
+            "Yearly" => "year",
+            _ => r.Frequency.ToLowerInvariant()
+        };
+        var every = r.Interval == 1 ? $"Every {unit}" : $"Every {r.Interval} {unit}s";
+        if (r.Frequency == "Monthly" && r.DayOfMonth is { } d)
+        {
+            every += $" (day {d})";
+        }
+        return every;
+    }
+}

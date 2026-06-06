@@ -61,6 +61,8 @@ public partial class Program {
         builder.Services.AddScoped<ITransactionRepository, TransactionRepository>();
         builder.Services.AddScoped<ITagRepository, TagRepository>();
         builder.Services.AddScoped<IBudgetRepository, BudgetRepository>();
+        builder.Services.AddScoped<IRecurringRuleRepository, RecurringRuleRepository>();
+        builder.Services.AddScoped<IRecurringOccurrenceRepository, RecurringOccurrenceRepository>();
 
         // Configure Options
         builder.Services.Configure<SupabaseOptions>(
@@ -115,6 +117,19 @@ public partial class Program {
 
         // Domain services (Dashboard)
         builder.Services.AddScoped<IDashboardService, BudgetTracker.Api.Services.Dashboard.DashboardService>();
+
+        // Domain services (Recurring)
+        builder.Services.AddScoped<IRecurringGenerationService,
+            BudgetTracker.Api.Services.Recurring.RecurringGenerationService>();
+        builder.Services.AddScoped<BudgetTracker.Api.Features.Recurring.RecurringWriteService>();
+        builder.Services.AddScoped<BudgetTracker.Api.Features.Recurring.RecurringDtoFactory>();
+
+        // The daily generation job — excluded from Testing (no Npgsql DbContext; tests drive
+        // generation via the manual endpoint).
+        if (!builder.Environment.IsEnvironment("Testing"))
+        {
+            builder.Services.AddHostedService<BudgetTracker.Api.Services.Recurring.RecurringGenerationBackgroundService>();
+        }
 
         // Add Security Services
         builder.Services.AddScoped<ICsrfService, CsrfService>();
@@ -185,6 +200,17 @@ public partial class Program {
 
 
         var app = builder.Build();
+
+        // Dev convenience: apply any pending EF migrations on startup so the local database always
+        // matches the code after pulling a branch. Development only — never auto-migrate a real
+        // (staging/production) database; that stays a deliberate, reviewed `dotnet ef database update`.
+        // (The Testing environment doesn't register the Npgsql DbContext, so it is excluded here too.)
+        if (app.Environment.IsDevelopment())
+        {
+            using var scope = app.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.Database.Migrate();
+        }
 
         // Configure middleware
         if (app.Environment.IsDevelopment())

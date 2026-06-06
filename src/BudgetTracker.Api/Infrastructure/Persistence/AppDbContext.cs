@@ -26,6 +26,8 @@ public class AppDbContext : DbContext
     public DbSet<Tag> Tags => Set<Tag>();
     public DbSet<TransactionTag> TransactionTags => Set<TransactionTag>();
     public DbSet<Budget> Budgets => Set<Budget>();
+    public DbSet<RecurringRule> RecurringRules => Set<RecurringRule>();
+    public DbSet<RecurringOccurrence> RecurringOccurrences => Set<RecurringOccurrence>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
