@@ -1,0 +1,215 @@
+@using BudgetTracker.Shared.DTOs.Dashboard
+@using BudgetTracker.Web.Services
+@using BudgetTracker.Web.Services.ErrorHandling
+@inject IApiClient ApiClient
+@inject ApiErrorHandler ErrorHandler
+
+<div class="container py-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <h1 class="h3 mb-0">Dashboard</h1>
+        <div class="d-flex flex-wrap align-items-center gap-2">
+            <!-- Scope toggle -->
+            <div class="btn-group btn-group-sm" role="group" aria-label="Scope">
+                <input type="radio" class="btn-check" name="scope" id="scope-household"
+                       checked="@(_scope == "household")" @onchange="@(() => SetScope("household"))" />
+                <label class="btn btn-outline-primary" for="scope-household">Household</label>
+
+                <input type="radio" class="btn-check" name="scope" id="scope-individual"
+                       checked="@(_scope == "individual")" @onchange="@(() => SetScope("individual"))" />
+                <label class="btn btn-outline-primary" for="scope-individual">Individual</label>
+            </div>
+
+            <!-- Month nav -->
+            <div class="d-flex align-items-center">
+                <button class="btn btn-outline-secondary btn-sm" @onclick="() => ShiftMonth(-1)" title="Previous month">
+                    <i class="bi bi-chevron-left"></i>
+                </button>
+                <span class="mx-2 fw-semibold" style="min-width: 9rem; text-align:center;">@_monthLabel</span>
+                <button class="btn btn-outline-secondary btn-sm" @onclick="() => ShiftMonth(1)" title="Next month">
+                    <i class="bi bi-chevron-right"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    @if (_isLoading)
+    {
+        <LoadingSpinner />
+    }
+    else if (!string.IsNullOrEmpty(_errorMessage))
+    {
+        <ErrorAlert Message="@_errorMessage" />
+    }
+    else if (_data is { } d)
+    {
+        <!-- Summary cards -->
+        <div class="row g-3 mb-4">
+            <div class="col-12 col-md-4">
+                <div class="card shadow-sm h-100 border-start border-success border-4">
+                    <div class="card-body">
+                        <div class="text-muted small text-uppercase">Income</div>
+                        <div class="h4 mb-0 text-success">@Money(d.TotalIncome, d.CurrencyCode)</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-12 col-md-4">
+                <div class="card shadow-sm h-100 border-start border-danger border-4">
+                    <div class="card-body">
+                        <div class="text-muted small text-uppercase">Expenses</div>
+                        <div class="h4 mb-0 text-danger">@Money(d.TotalExpenses, d.CurrencyCode)</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-12 col-md-4">
+                <div class="card shadow-sm h-100 border-start border-4 @(d.NetBalance >= 0 ? "border-primary" : "border-warning")">
+                    <div class="card-body">
+                        <div class="text-muted small text-uppercase">Net</div>
+                        <div class="h4 mb-0 @(d.NetBalance >= 0 ? "text-primary" : "text-warning")">
+                            @Money(d.NetBalance, d.CurrencyCode)
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-3">
+            <!-- By-category breakdown -->
+            <div class="col-12 col-lg-7">
+                <div class="card shadow-sm h-100">
+                    <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+                        <span class="fw-semibold">Spending by category</span>
+                        <a class="small" href="/transactions">View transactions</a>
+                    </div>
+                    <div class="card-body">
+                        @if (d.ByCategory.Count == 0)
+                        {
+                            <div class="text-muted text-center py-4">
+                                No expenses recorded for @_monthLabel.
+                            </div>
+                        }
+                        else
+                        {
+                            @foreach (var c in d.ByCategory)
+                            {
+                                <div class="mb-2">
+                                    <div class="d-flex justify-content-between small">
+                                        <span>@(c.Name ?? "Uncategorised")</span>
+                                        <span class="text-muted">@Money(c.Amount, d.CurrencyCode) · @c.Percent.ToString("0.#")%</span>
+                                    </div>
+                                    <div class="progress" style="height: 0.5rem;" role="progressbar"
+                                         aria-valuenow="@((int)c.Percent)" aria-valuemin="0" aria-valuemax="100">
+                                        <div class="progress-bar bg-info"
+                                             style="width: @(c.Percent.ToString(System.Globalization.CultureInfo.InvariantCulture))%;"></div>
+                                    </div>
+                                </div>
+                            }
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-12 col-lg-5">
+                <!-- Budget summary -->
+                <div class="card shadow-sm mb-3">
+                    <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+                        <span class="fw-semibold">Budgets</span>
+                        <a class="small" href="/budgets">Manage</a>
+                    </div>
+                    <div class="card-body">
+                        @if (d.BudgetSummary.Total == 0)
+                        {
+                            <div class="text-muted text-center py-3">No budgets active this month.</div>
+                        }
+                        else
+                        {
+                            <div class="d-flex justify-content-between mb-2">
+                                <span class="badge bg-success">@d.BudgetSummary.OnTrack on track</span>
+                                <span class="badge bg-warning text-dark">@d.BudgetSummary.Warning warning</span>
+                                <span class="badge bg-danger">@d.BudgetSummary.Exceeded exceeded</span>
+                            </div>
+                            <div class="small text-muted">
+                                Spent @Money(d.BudgetSummary.TotalSpent, d.CurrencyCode)
+                                of @Money(d.BudgetSummary.TotalBudgeted, d.CurrencyCode) budgeted.
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                <!-- Top accounts -->
+                <div class="card shadow-sm">
+                    <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+                        <span class="fw-semibold">Accounts</span>
+                        <a class="small" href="/accounts">View all</a>
+                    </div>
+                    <div class="card-body p-0">
+                        @if (d.TopAccounts.Count == 0)
+                        {
+                            <div class="text-muted text-center py-3">No accounts yet.</div>
+                        }
+                        else
+                        {
+                            <ul class="list-group list-group-flush">
+                                @foreach (var a in d.TopAccounts)
+                                {
+                                    <li class="list-group-item d-flex justify-content-between">
+                                        <span>@a.Name</span>
+                                        <span class="@(a.Balance < 0 ? "text-danger" : "")">@Money(a.Balance, a.CurrencyCode)</span>
+                                    </li>
+                                }
+                            </ul>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private MonthlyDashboardDto? _data;
+    private bool _isLoading = true;
+    private string? _errorMessage;
+
+    private DateTime _month = DateTime.Today;
+    private string _scope = "household";
+    private string _monthLabel => _month.ToString("MMMM yyyy");
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _isLoading = true;
+        _errorMessage = null;
+        try
+        {
+            _data = await ApiClient.GetMonthlyDashboardAsync(new DashboardQuery
+            {
+                Month = _month.ToString("yyyy-MM"),
+                Scope = _scope
+            });
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ErrorHandler.Handle(ex, "Failed to load the dashboard").UserMessage;
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task ShiftMonth(int delta)
+    {
+        _month = _month.AddMonths(delta);
+        await LoadAsync();
+    }
+
+    private async Task SetScope(string scope)
+    {
+        if (_scope == scope) return;
+        _scope = scope;
+        await LoadAsync();
+    }
+
+    private static string Money(decimal amount, string currency) => $"{amount:N2} {currency}";
+}
