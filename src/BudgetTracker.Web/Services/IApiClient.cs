@@ -4,6 +4,7 @@ using BudgetTracker.Shared.DTOs.Budgets;
 using BudgetTracker.Shared.DTOs.Categories;
 using BudgetTracker.Shared.DTOs.Dashboard;
 using BudgetTracker.Shared.DTOs.Households;
+using BudgetTracker.Shared.DTOs.Payslips;
 using BudgetTracker.Shared.DTOs.Recurring;
 using BudgetTracker.Shared.DTOs.Transactions;
 using BudgetTracker.Shared.DTOs.Users;
@@ -168,6 +169,25 @@ public interface IApiClient
 
     [Post("/api/v1/recurring/occurrences/{id}/confirm")]
     Task<RecurringOccurrenceDto?> ConfirmOccurrenceAsync(Guid id);
+
+    // Payslip endpoints (Sprint 8)
+    [Get("/api/v1/payslips")]
+    Task<List<PayslipListItemDto>?> GetPayslipsAsync();
+
+    [Get("/api/v1/payslips/{id}")]
+    Task<PayslipDto?> GetPayslipAsync(Guid id);
+
+    [Post("/api/v1/payslips")]
+    Task<PayslipDto?> CreatePayslipAsync([Body] CreatePayslipRequest request);
+
+    [Put("/api/v1/payslips/{id}")]
+    Task<PayslipDto?> UpdatePayslipAsync(Guid id, [Body] UpdatePayslipRequest request);
+
+    [Delete("/api/v1/payslips/{id}")]
+    Task DeletePayslipAsync(Guid id);
+
+    [Post("/api/v1/payslips/{id}/post")]
+    Task<PostPayslipResultDto?> PostPayslipAsync(Guid id, [Body] PostPayslipRequest request);
 }
 
 /// <summary>
