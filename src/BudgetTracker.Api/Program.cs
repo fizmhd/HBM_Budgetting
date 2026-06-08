@@ -139,6 +139,9 @@ public partial class Program {
             BudgetTracker.Api.Services.Payslips.SwedenPayslipProfile>();
         builder.Services.AddSingleton<BudgetTracker.Api.Services.Payslips.ICountryPayslipProfileProvider,
             BudgetTracker.Api.Services.Payslips.CountryPayslipProfileProvider>();
+        builder.Services.AddScoped<BudgetTracker.Api.Features.Payslips.PayslipWriteService>();
+        builder.Services.AddScoped<BudgetTracker.Api.Features.Payslips.PayslipDtoFactory>();
+        builder.Services.AddScoped<BudgetTracker.Api.Features.Payslips.PayslipPostingService>();
 
         // Encryption at rest for the personnummer (GDPR). The key ring is persisted outside Testing so
         // protected values stay decryptable across restarts; never auto-migrated/regenerated in prod.
