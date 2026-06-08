@@ -17,6 +17,7 @@ using BudgetTracker.Api.Infrastructure.Middleware;
 using SessionOptions = BudgetTracker.Api.Infrastructure.Options.SessionOptions;
 using BudgetTracker.Api.Services.Mappers;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.DataProtection;
 // Make the implicit Program class public for integration tests
 
 public partial class Program {
@@ -63,6 +64,7 @@ public partial class Program {
         builder.Services.AddScoped<IBudgetRepository, BudgetRepository>();
         builder.Services.AddScoped<IRecurringRuleRepository, RecurringRuleRepository>();
         builder.Services.AddScoped<IRecurringOccurrenceRepository, RecurringOccurrenceRepository>();
+        builder.Services.AddScoped<IPayslipRepository, PayslipRepository>();
 
         // Configure Options
         builder.Services.Configure<SupabaseOptions>(
@@ -130,6 +132,26 @@ public partial class Program {
         {
             builder.Services.AddHostedService<BudgetTracker.Api.Services.Recurring.RecurringGenerationBackgroundService>();
         }
+
+        // Domain services (Payslips — Sprint 8). The country-profile seam: Sweden is the first
+        // profile; other Nordic profiles slot in by registering another ICountryPayslipProfile.
+        builder.Services.AddSingleton<BudgetTracker.Api.Services.Payslips.ICountryPayslipProfile,
+            BudgetTracker.Api.Services.Payslips.SwedenPayslipProfile>();
+        builder.Services.AddSingleton<BudgetTracker.Api.Services.Payslips.ICountryPayslipProfileProvider,
+            BudgetTracker.Api.Services.Payslips.CountryPayslipProfileProvider>();
+
+        // Encryption at rest for the personnummer (GDPR). The key ring is persisted outside Testing so
+        // protected values stay decryptable across restarts; never auto-migrated/regenerated in prod.
+        var dataProtection = builder.Services.AddDataProtection()
+            .SetApplicationName("BudgetTracker");
+        if (!builder.Environment.IsEnvironment("Testing"))
+        {
+            var keysPath = builder.Configuration["DataProtection:KeyRingPath"]
+                ?? Path.Combine(builder.Environment.ContentRootPath, "keys");
+            Directory.CreateDirectory(keysPath);
+            dataProtection.PersistKeysToFileSystem(new DirectoryInfo(keysPath));
+        }
+        builder.Services.AddSingleton<IFieldProtector, DataProtectionFieldProtector>();
 
         // Add Security Services
         builder.Services.AddScoped<ICsrfService, CsrfService>();
