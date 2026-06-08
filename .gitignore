@@ -90,3 +90,6 @@ appsettings.Local.json
 [Pp]ublish/
 
 .claude/*
+
+# Data Protection key ring (personnummer encryption) — must never be committed
+keys/

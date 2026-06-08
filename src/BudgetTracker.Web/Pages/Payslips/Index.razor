@@ -1,0 +1,702 @@
+@page "/payslips"
+@using BudgetTracker.Shared.DTOs.Accounts
+@using BudgetTracker.Shared.DTOs.Categories
+@using BudgetTracker.Shared.DTOs.Payslips
+@using BudgetTracker.Web.Services
+@using BudgetTracker.Web.Services.ErrorHandling
+@using BudgetTracker.Web.Components.Shared
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@inject IApiClient ApiClient
+@inject ApiErrorHandler ErrorHandler
+
+<PageTitle>Payslips - Budget Tracker</PageTitle>
+
+<div class="container py-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1 class="h3 mb-0">Payslips</h1>
+        <button class="btn btn-primary" @onclick="OpenCreate">
+            <i class="bi bi-plus-lg me-1"></i> Add payslip
+        </button>
+    </div>
+
+    @if (_isLoading)
+    {
+        <LoadingSpinner />
+    }
+    else if (!string.IsNullOrEmpty(_errorMessage))
+    {
+        <ErrorAlert Message="@_errorMessage" />
+    }
+    else if (_payslips.Count == 0)
+    {
+        <div class="alert alert-info">
+            No payslips yet. Add your <em>lönespecifikation</em> to track salary and post it as income.
+        </div>
+    }
+    else
+    {
+        <div class="card shadow-sm">
+            <div class="table-responsive">
+                <table class="table align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>Employer</th>
+                            <th>Pay period</th>
+                            <th>Pay date</th>
+                            <th class="text-end">Net</th>
+                            <th>Status</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var p in _payslips)
+                        {
+                            <tr>
+                                <td>@p.EmployerName</td>
+                                <td class="small text-muted">@p.PayPeriodStart.ToString("yyyy-MM-dd") – @p.PayPeriodEnd.ToString("yyyy-MM-dd")</td>
+                                <td>@p.PayDate.ToString("yyyy-MM-dd")</td>
+                                <td class="text-end">@p.DeclaredNet.ToString("N2") @p.CurrencyCode</td>
+                                <td>
+                                    <span class="badge @(p.Status == "Posted" ? "bg-success" : "bg-secondary")">@p.Status</span>
+                                </td>
+                                <td class="text-end">
+                                    <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => OpenView(p.Id)" disabled="@_isWorking">
+                                        @(p.Status == "Posted" ? "View" : "Edit")
+                                    </button>
+                                    @if (p.Status != "Posted")
+                                    {
+                                        <button class="btn btn-sm btn-outline-success me-1" @onclick="() => OpenPost(p.Id)" disabled="@_isWorking">Post</button>
+                                    }
+                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => Delete(p)" disabled="@_isWorking">Delete</button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+</div>
+
+@if (_showModal)
+{
+    var readOnly = _form.Status == "Posted";
+    <div class="modal fade show d-block" tabindex="-1" role="dialog">
+        <div class="modal-dialog modal-xl" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">@(_form.Id is null ? "Add payslip" : (readOnly ? "Payslip" : "Edit payslip"))</h5>
+                    <button type="button" class="btn-close" @onclick="CloseModal"></button>
+                </div>
+                <div class="modal-body">
+                    @if (!string.IsNullOrEmpty(_modalError))
+                    {
+                        <div class="alert alert-danger">@_modalError</div>
+                    }
+                    @if (readOnly)
+                    {
+                        <div class="alert alert-success py-2">
+                            Posted on @_form.PostedAt?.ToString("yyyy-MM-dd") — this payslip is read-only.
+                        </div>
+                    }
+
+                    <!-- Meta header -->
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Employer</label>
+                            <input class="form-control" @bind="_form.EmployerName" disabled="@readOnly" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Employee (optional)</label>
+                            <input class="form-control" @bind="_form.EmployeeName" disabled="@readOnly" />
+                        </div>
+                    </div>
+
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">
+                                Personnummer
+                                <i class="bi bi-shield-lock text-muted" title="Encrypted at rest; never shown in full"></i>
+                            </label>
+                            @if (!string.IsNullOrEmpty(_form.PersonnummerMasked))
+                            {
+                                <div class="form-text mb-1">Stored: <code>@_form.PersonnummerMasked</code></div>
+                            }
+                            <input class="form-control" @bind="_form.Personnummer" disabled="@readOnly"
+                                   placeholder="@(_form.Id is null ? "YYYYMMDD-XXXX" : "Leave blank to keep")" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Currency</label>
+                            <input class="form-control" @bind="_form.CurrencyCode" disabled="@readOnly" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Country</label>
+                            <input class="form-control" value="Sweden" disabled />
+                        </div>
+                    </div>
+
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-4">
+                            <label class="form-label">Pay period start</label>
+                            <input type="date" class="form-control" @bind="_form.PayPeriodStart" disabled="@readOnly" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Pay period end</label>
+                            <input type="date" class="form-control" @bind="_form.PayPeriodEnd" disabled="@readOnly" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Pay date</label>
+                            <input type="date" class="form-control" @bind="_form.PayDate" disabled="@readOnly" />
+                        </div>
+                    </div>
+
+                    <!-- Line items -->
+                    <h6 class="mt-4">Line items</h6>
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle">
+                            <thead>
+                                <tr>
+                                    <th style="width: 18%">Type</th>
+                                    <th>Label</th>
+                                    <th class="text-end" style="width: 12%">Qty</th>
+                                    <th class="text-end" style="width: 14%">Unit amount</th>
+                                    <th class="text-end" style="width: 16%">Amount</th>
+                                    <th style="width: 5%"></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var line in _form.Lines)
+                                {
+                                    <tr>
+                                        <td>
+                                            <select class="form-select form-select-sm" @bind="line.Type" disabled="@readOnly">
+                                                @foreach (var (key, label) in _lineTypes)
+                                                {
+                                                    <option value="@key">@label</option>
+                                                }
+                                            </select>
+                                        </td>
+                                        <td><input class="form-control form-control-sm" @bind="line.Label" disabled="@readOnly" /></td>
+                                        <td>
+                                            <input type="number" step="0.01" class="form-control form-control-sm text-end"
+                                                   @bind="line.Quantity" @bind:after="() => RecalcLine(line)" disabled="@readOnly" />
+                                        </td>
+                                        <td>
+                                            <input type="number" step="0.01" class="form-control form-control-sm text-end"
+                                                   @bind="line.UnitAmount" @bind:after="() => RecalcLine(line)" disabled="@readOnly" />
+                                        </td>
+                                        <td>
+                                            <input type="number" step="0.01" class="form-control form-control-sm text-end"
+                                                   @bind="line.Amount" disabled="@readOnly" />
+                                        </td>
+                                        <td class="text-center">
+                                            @if (!readOnly)
+                                            {
+                                                <button class="btn btn-sm btn-outline-danger" @onclick="() => _form.Lines.Remove(line)" title="Remove">&times;</button>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                    @if (!readOnly)
+                    {
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="AddLine">
+                            <i class="bi bi-plus-lg me-1"></i> Add line
+                        </button>
+                    }
+
+                    <!-- Leave balances -->
+                    <h6 class="mt-4">Leave balances</h6>
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle">
+                            <thead>
+                                <tr>
+                                    <th>Type</th>
+                                    <th class="text-end" style="width: 18%">Balance</th>
+                                    <th style="width: 18%">Unit</th>
+                                    <th style="width: 5%"></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var leave in _form.Leaves)
+                                {
+                                    <tr>
+                                        <td><input class="form-control form-control-sm" @bind="leave.LeaveType" disabled="@readOnly" placeholder="e.g. Semester" /></td>
+                                        <td><input type="number" step="0.01" class="form-control form-control-sm text-end" @bind="leave.Balance" disabled="@readOnly" /></td>
+                                        <td><input class="form-control form-control-sm" @bind="leave.Unit" disabled="@readOnly" /></td>
+                                        <td class="text-center">
+                                            @if (!readOnly)
+                                            {
+                                                <button class="btn btn-sm btn-outline-danger" @onclick="() => _form.Leaves.Remove(leave)" title="Remove">&times;</button>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                    @if (!readOnly)
+                    {
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="() => _form.Leaves.Add(new LeaveForm())">
+                            <i class="bi bi-plus-lg me-1"></i> Add leave balance
+                        </button>
+                    }
+
+                    <!-- Summary + reconciliation -->
+                    <div class="row g-3 mt-3">
+                        <div class="col-md-7">
+                            <div class="card bg-light">
+                                <div class="card-body">
+                                    <h6 class="card-title">Summary (this period)</h6>
+                                    <dl class="row mb-0 small">
+                                        <dt class="col-7">Bruttolön (gross)</dt><dd class="col-5 text-end">@Gross.ToString("N2")</dd>
+                                        <dt class="col-7">Förmåner (benefits)</dt><dd class="col-5 text-end">@Benefits.ToString("N2")</dd>
+                                        <dt class="col-7">Skatt (tax)</dt><dd class="col-5 text-end">@Tax.ToString("N2")</dd>
+                                        @if (Deductions != 0)
+                                        {
+                                            <dt class="col-7">Deductions</dt><dd class="col-5 text-end">@Deductions.ToString("N2")</dd>
+                                        }
+                                        @if (Reimbursements != 0)
+                                        {
+                                            <dt class="col-7">Reimbursements</dt><dd class="col-5 text-end">@Reimbursements.ToString("N2")</dd>
+                                        }
+                                        <dt class="col-7 fw-bold border-top pt-1">Nettolön (computed)</dt>
+                                        <dd class="col-5 text-end fw-bold border-top pt-1">@ComputedNet.ToString("N2")</dd>
+                                    </dl>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-5">
+                            <label class="form-label">Net pay on payslip</label>
+                            <input type="number" step="0.01" class="form-control mb-2" @bind="_form.DeclaredNet" disabled="@readOnly" />
+                            @if (IsReconciled)
+                            {
+                                <div class="alert alert-success py-2 mb-0">
+                                    <i class="bi bi-check-circle me-1"></i> Reconciles to net.
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="alert alert-warning py-2 mb-0">
+                                    <i class="bi bi-exclamation-triangle me-1"></i>
+                                    Off by @Diff.ToString("N2") @_form.CurrencyCode (computed @ComputedNet.ToString("N2") vs @_form.DeclaredNet.ToString("N2")).
+                                </div>
+                            }
+                        </div>
+                    </div>
+
+                    <div class="mt-3">
+                        <label class="form-label">Notes</label>
+                        <textarea class="form-control" rows="2" @bind="_form.Notes" disabled="@readOnly"></textarea>
+                    </div>
+
+                    @if (!readOnly)
+                    {
+                        <div class="form-check mt-2">
+                            <input class="form-check-input" type="checkbox" id="payslipShared" @bind="_form.IsShared" />
+                            <label class="form-check-label" for="payslipShared">Share with household</label>
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CloseModal" disabled="@_isWorking">Close</button>
+                    @if (!readOnly)
+                    {
+                        <button type="button" class="btn btn-primary" @onclick="Save" disabled="@(_isWorking || !CanSubmit)">
+                            @if (_isWorking)
+                            {
+                                <span class="spinner-border spinner-border-sm me-1"></span>
+                            }
+                            Save
+                        </button>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+@if (_showPost)
+{
+    <div class="modal fade show d-block" tabindex="-1" role="dialog">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Post payslip as income</h5>
+                    <button type="button" class="btn-close" @onclick="() => _showPost = false"></button>
+                </div>
+                <div class="modal-body">
+                    @if (!string.IsNullOrEmpty(_postError))
+                    {
+                        <div class="alert alert-danger">@_postError</div>
+                    }
+                    <p>
+                        Posts <strong>@_postAmount.ToString("N2") @_postCurrency</strong> as an income transaction.
+                    </p>
+                    <div class="mb-3">
+                        <label class="form-label">Account</label>
+                        <select class="form-select" @bind="_postAccountId">
+                            <option value="">Select an account…</option>
+                            @foreach (var a in _accounts)
+                            {
+                                <option value="@a.Id">@a.Name (@a.CurrencyCode)</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Income category</label>
+                        <CategoryPicker Tree="_tree" SelectedCategoryId="_postCategoryId"
+                                        SelectedCategoryIdChanged="v => _postCategoryId = v" />
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">Date</label>
+                        <input type="date" class="form-control" @bind="_postDate" />
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="() => _showPost = false" disabled="@_isWorking">Cancel</button>
+                    <button type="button" class="btn btn-success" @onclick="ConfirmPost"
+                            disabled="@(_isWorking || _postAccountId is null || _postCategoryId is null)">
+                        @if (_isWorking)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        Post
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+@code {
+    private sealed class LineForm
+    {
+        public string Type { get; set; } = "Earning";
+        public string Label { get; set; } = string.Empty;
+        public decimal? Quantity { get; set; }
+        public decimal? UnitAmount { get; set; }
+        public decimal Amount { get; set; }
+    }
+
+    private sealed class LeaveForm
+    {
+        public string LeaveType { get; set; } = string.Empty;
+        public decimal Balance { get; set; }
+        public string Unit { get; set; } = "days";
+    }
+
+    private sealed class PayslipForm
+    {
+        public Guid? Id { get; set; }
+        public string EmployerName { get; set; } = string.Empty;
+        public string? EmployeeName { get; set; }
+        public string? Personnummer { get; set; }
+        public string? PersonnummerMasked { get; set; }
+        public DateTime PayPeriodStart { get; set; } = DateTime.Today;
+        public DateTime PayPeriodEnd { get; set; } = DateTime.Today;
+        public DateTime PayDate { get; set; } = DateTime.Today;
+        public string CurrencyCode { get; set; } = "SEK";
+        public decimal DeclaredNet { get; set; }
+        public string? Notes { get; set; }
+        public bool IsShared { get; set; }
+        public string Status { get; set; } = "Draft";
+        public DateTime? PostedAt { get; set; }
+        public List<LineForm> Lines { get; set; } = new();
+        public List<LeaveForm> Leaves { get; set; } = new();
+    }
+
+    // Line types with friendly labels (Sweden is the MVP profile).
+    private static readonly (string Key, string Label)[] _lineTypes =
+    {
+        ("Earning", "Earning (lön)"), ("Benefit", "Benefit (förmån)"), ("Tax", "Tax (skatt)"),
+        ("Deduction", "Deduction (avdrag)"), ("Reimbursement", "Reimbursement (utlägg)"), ("Info", "Info")
+    };
+
+    private List<PayslipListItemDto> _payslips = new();
+    private List<AccountDto> _accounts = new();
+    private List<CategoryTreeNodeDto> _tree = new();
+
+    private bool _isLoading = true;
+    private bool _isWorking;
+    private string? _errorMessage;
+
+    private bool _showModal;
+    private string? _modalError;
+    private PayslipForm _form = new();
+
+    private bool _showPost;
+    private Guid? _postTarget;
+    private Guid? _postAccountId;
+    private Guid? _postCategoryId;
+    private DateTime _postDate = DateTime.Today;
+    private decimal _postAmount;
+    private string _postCurrency = "SEK";
+    private string? _postError;
+
+    // ---- Live summary (mirrors the server PayslipReconciler for Sweden) ----
+    private decimal SumByType(string type) => _form.Lines.Where(l => l.Type == type).Sum(l => l.Amount);
+    private decimal Gross => SumByType("Earning");
+    private decimal Benefits => SumByType("Benefit");
+    private decimal Tax => SumByType("Tax");
+    private decimal Deductions => SumByType("Deduction");
+    private decimal Reimbursements => SumByType("Reimbursement");
+    private decimal ComputedNet => Gross + Reimbursements - Tax - Deductions;
+    private decimal Diff => ComputedNet - _form.DeclaredNet;
+    private bool IsReconciled => Math.Abs(Diff) <= 0.01m;
+
+    private bool CanSubmit =>
+        !string.IsNullOrWhiteSpace(_form.EmployerName) &&
+        _form.PayPeriodEnd.Date >= _form.PayPeriodStart.Date &&
+        _form.DeclaredNet >= 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadReferenceDataAsync();
+        await LoadAsync();
+    }
+
+    private async Task LoadReferenceDataAsync()
+    {
+        try
+        {
+            _accounts = (await ApiClient.GetAccountsAsync() ?? new()).Where(a => !a.IsArchived).ToList();
+            _tree = await ApiClient.GetCategoryTreeAsync() ?? new();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ErrorHandler.Handle(ex, "Failed to load accounts/categories").UserMessage;
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        _isLoading = true;
+        _errorMessage = null;
+        try
+        {
+            _payslips = await ApiClient.GetPayslipsAsync() ?? new();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ErrorHandler.Handle(ex, "Failed to load payslips").UserMessage;
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private static void RecalcLine(LineForm line)
+    {
+        if (line.Quantity is { } q && line.UnitAmount is { } u)
+        {
+            line.Amount = q * u;
+        }
+    }
+
+    private void AddLine() => _form.Lines.Add(new LineForm());
+
+    private void OpenCreate()
+    {
+        _modalError = null;
+        _form = new PayslipForm
+        {
+            Lines = new List<LineForm>
+            {
+                new() { Type = "Earning", Label = "Grundlön" },
+                new() { Type = "Tax", Label = "Preliminärskatt" }
+            }
+        };
+        _showModal = true;
+    }
+
+    private async Task OpenView(Guid id)
+    {
+        _modalError = null;
+        _isWorking = true;
+        try
+        {
+            var p = await ApiClient.GetPayslipAsync(id);
+            if (p is null)
+            {
+                _errorMessage = "Payslip not found.";
+                return;
+            }
+            _form = new PayslipForm
+            {
+                Id = p.Id,
+                EmployerName = p.EmployerName,
+                EmployeeName = p.EmployeeName,
+                PersonnummerMasked = p.PersonnummerMasked,
+                PayPeriodStart = p.PayPeriodStart.ToDateTime(TimeOnly.MinValue),
+                PayPeriodEnd = p.PayPeriodEnd.ToDateTime(TimeOnly.MinValue),
+                PayDate = p.PayDate.ToDateTime(TimeOnly.MinValue),
+                CurrencyCode = p.CurrencyCode,
+                DeclaredNet = p.DeclaredNet,
+                Notes = p.Notes,
+                IsShared = p.IsShared,
+                Status = p.Status,
+                PostedAt = p.PostedAt,
+                Lines = p.LineItems.Select(l => new LineForm
+                {
+                    Type = l.Type, Label = l.Label, Quantity = l.Quantity,
+                    UnitAmount = l.UnitAmount, Amount = l.Amount
+                }).ToList(),
+                Leaves = p.LeaveBalances.Select(b => new LeaveForm
+                {
+                    LeaveType = b.LeaveType, Balance = b.Balance, Unit = b.Unit
+                }).ToList()
+            };
+            _showModal = true;
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ErrorHandler.Handle(ex, "Failed to load payslip").UserMessage;
+        }
+        finally
+        {
+            _isWorking = false;
+        }
+    }
+
+    private void CloseModal() => _showModal = false;
+
+    private async Task Save()
+    {
+        if (!CanSubmit)
+        {
+            _modalError = "Please complete the form (employer, valid pay period, net ≥ 0).";
+            return;
+        }
+
+        _isWorking = true;
+        _modalError = null;
+        try
+        {
+            var request = new CreatePayslipRequest
+            {
+                Country = "Sweden",
+                EmployerName = _form.EmployerName.Trim(),
+                EmployeeName = _form.EmployeeName,
+                Personnummer = _form.Personnummer,
+                PayPeriodStart = DateOnly.FromDateTime(_form.PayPeriodStart),
+                PayPeriodEnd = DateOnly.FromDateTime(_form.PayPeriodEnd),
+                PayDate = DateOnly.FromDateTime(_form.PayDate),
+                CurrencyCode = string.IsNullOrWhiteSpace(_form.CurrencyCode) ? "SEK" : _form.CurrencyCode.Trim(),
+                DeclaredNet = _form.DeclaredNet,
+                Notes = _form.Notes,
+                IsShared = _form.IsShared,
+                LineItems = _form.Lines
+                    .Where(l => !string.IsNullOrWhiteSpace(l.Label))
+                    .Select((l, i) => new PayslipLineItemInput
+                    {
+                        Type = l.Type, Label = l.Label.Trim(), Quantity = l.Quantity,
+                        UnitAmount = l.UnitAmount, Amount = l.Amount, SortOrder = i
+                    }).ToList(),
+                LeaveBalances = _form.Leaves
+                    .Where(b => !string.IsNullOrWhiteSpace(b.LeaveType))
+                    .Select(b => new PayslipLeaveBalanceInput
+                    {
+                        LeaveType = b.LeaveType.Trim(), Balance = b.Balance,
+                        Unit = string.IsNullOrWhiteSpace(b.Unit) ? "days" : b.Unit.Trim()
+                    }).ToList()
+            };
+
+            if (_form.Id is { } id)
+            {
+                await ApiClient.UpdatePayslipAsync(id, new UpdatePayslipRequest
+                {
+                    Country = request.Country, EmployerName = request.EmployerName, EmployeeName = request.EmployeeName,
+                    Personnummer = request.Personnummer, PayPeriodStart = request.PayPeriodStart,
+                    PayPeriodEnd = request.PayPeriodEnd, PayDate = request.PayDate, CurrencyCode = request.CurrencyCode,
+                    DeclaredNet = request.DeclaredNet, Notes = request.Notes, IsShared = request.IsShared,
+                    LineItems = request.LineItems, LeaveBalances = request.LeaveBalances
+                });
+            }
+            else
+            {
+                await ApiClient.CreatePayslipAsync(request);
+            }
+
+            _showModal = false;
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _modalError = ErrorHandler.Handle(ex, "Failed to save payslip").UserMessage;
+        }
+        finally
+        {
+            _isWorking = false;
+        }
+    }
+
+    private async Task Delete(PayslipListItemDto p)
+    {
+        _isWorking = true;
+        _errorMessage = null;
+        try
+        {
+            await ApiClient.DeletePayslipAsync(p.Id);
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ErrorHandler.Handle(ex, "Failed to delete payslip").UserMessage;
+        }
+        finally
+        {
+            _isWorking = false;
+        }
+    }
+
+    private void OpenPost(Guid id)
+    {
+        var p = _payslips.FirstOrDefault(x => x.Id == id);
+        if (p is null) return;
+        _postTarget = id;
+        _postAmount = p.DeclaredNet;
+        _postCurrency = p.CurrencyCode;
+        _postDate = p.PayDate.ToDateTime(TimeOnly.MinValue);
+        _postAccountId = _accounts.FirstOrDefault()?.Id;
+        _postCategoryId = null;
+        _postError = null;
+        _showPost = true;
+    }
+
+    private async Task ConfirmPost()
+    {
+        if (_postTarget is not { } id || _postAccountId is not { } accountId || _postCategoryId is not { } categoryId)
+        {
+            return;
+        }
+
+        _isWorking = true;
+        _postError = null;
+        try
+        {
+            await ApiClient.PostPayslipAsync(id, new PostPayslipRequest
+            {
+                AccountId = accountId,
+                CategoryId = categoryId,
+                Date = DateOnly.FromDateTime(_postDate)
+            });
+            _showPost = false;
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _postError = ErrorHandler.Handle(ex, "Failed to post payslip").UserMessage;
+        }
+        finally
+        {
+            _isWorking = false;
+        }
+    }
+}

@@ -28,6 +28,9 @@ public class AppDbContext : DbContext
     public DbSet<Budget> Budgets => Set<Budget>();
     public DbSet<RecurringRule> RecurringRules => Set<RecurringRule>();
     public DbSet<RecurringOccurrence> RecurringOccurrences => Set<RecurringOccurrence>();
+    public DbSet<Payslip> Payslips => Set<Payslip>();
+    public DbSet<PayslipLineItem> PayslipLineItems => Set<PayslipLineItem>();
+    public DbSet<PayslipLeaveBalance> PayslipLeaveBalances => Set<PayslipLeaveBalance>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
